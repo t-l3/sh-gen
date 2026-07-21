@@ -10,8 +10,8 @@ while [[ "$1" ]]; do
       shift
       continue
       ;;
-    #@completion command push-config Push config to the config endpoint
-    #@completion command-arg push-config --config Specify the config string for push-config
+    #@shgen command push-config Push config to the config endpoint
+    #@shgen argument push-config --config Specify the config string for push-config
     push-config)
       shift
       local PUSH_CONFIG_DATA='{"some":"config"}'
