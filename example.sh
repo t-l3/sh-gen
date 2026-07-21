@@ -1,7 +1,9 @@
 #!/usr/bin/bash
 
+# @shgen module example-script Example script acts as a template to demonstrate how shell generation can enable quick implementation of bash completion and help functionality.
+
 while [[ "$1" ]]; do
-  case "$1"
+  case "$1" in
     -h | --help | help)
       sh-gen help $(readlink -f "$0") <<EOF
       Example script acts as a template to demonstrate how shell generation can
@@ -10,8 +12,8 @@ while [[ "$1" ]]; do
       shift
       continue
       ;;
-    #@shgen command push-config Push config to the config endpoint
-    #@shgen argument push-config --config Specify the config string for push-config
+    # @shgen command ?parent=example-script push-config Push config to the config endpoint
+    # @shgen argument ?parent=push-config --config Specify the config string for push-config
     push-config)
       shift
       local PUSH_CONFIG_DATA='{"some":"config"}'
