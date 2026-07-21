@@ -124,4 +124,4 @@ source my-tool-completion.bash
 my-tool <TAB><TAB>
 ```
 
-See [`example.txt`](example.txt) for a comprehensive multi-command annotation file modelling a fictional `sh-gen-test` CLI, suitable for manual testing of completion behaviour.
+See [`example.txt`](.dev/example.txt) for a comprehensive multi-command annotation file modelling a fictional `sh-gen-test` CLI, suitable for manual testing of completion behaviour.

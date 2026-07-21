@@ -314,8 +314,7 @@ _shgen_compreply_with_descriptions() {
                 printf "  %s\n" "${name}" >&2
             fi
         done
-        # Reprint the prompt + current line so the terminal looks clean.
-        printf '%s' "${PS1@P}${COMP_LINE}" >&2
+				
         # Use a single empty string rather than an empty array so bash does not
         # fall back to -o default (filename) completion after we have already
         # printed our own description list.
