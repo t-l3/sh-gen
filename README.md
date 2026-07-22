@@ -16,7 +16,7 @@ Annotations can appear in any file — shell scripts, Go source, Python, plain t
 
 ## Annotations
 
-Annotations follow this general form, where items in `[]` are required and items in `?[]` are optional:
+Annotation arguments preceded with a `?` are optional:
 
 ```
 @shgen module    ?parent=[parent]                     [name]  [description]
@@ -29,34 +29,34 @@ Annotations follow this general form, where items in `[]` are required and items
 
 ### `module`
 
-A module represents a named grouping of commands and arguments. It forms a node in the completion tree. The root module (no `?parent`) becomes the top-level program name.
+A module represents a named grouping of commands and arguments. It forms a node in the completion tree. The root module (no `parent`) becomes the top-level program name.
 
-Modules can be nested using `?parent=` to mirror layered CLI structures (e.g. `kubectl`, `docker`).
+Modules can be nested using `parent=` to mirror layered CLI structures (e.g. `kubectl`, `docker`).
 
 ```
 @shgen module my-tool    My CLI tool
-@shgen module my-tool:deploy  ?parent=my-tool  Deploy subcommands
+@shgen module my-tool:deploy  parent=my-tool  Deploy subcommands
 ```
 
 ### `command`
 
-A command is a subcommand of a module. Attach it to a module with `?parent=`.
+A command is a subcommand of a module. Attach it to a module with `parent=`.
 
 ```
-@shgen command ?parent=my-tool deploy  Build and deploy a service
+@shgen command parent=my-tool deploy  Build and deploy a service
 ```
 
 ### `argument`
 
-An argument is a flag or positional parameter. It can be attached to a command or module with `?parent=`. The flag name (e.g. `--output`) is optional — omit it for positional arguments.
+An argument is a flag or positional parameter. It can be attached to a command or module with `parent=`. The flag name (e.g. `--output`) is optional — omit it for positional arguments.
 
 ```
-@shgen argument ?parent=deploy --tag  Image tag to deploy
+@shgen argument parent=deploy --tag  Image tag to deploy
 ```
 
-Control how the flag's **value** is completed using `?complete=`:
+Control how the flag's **value** is completed using `complete=`:
 
-| `?complete=` value | Behaviour |
+| `complete=` value | Behaviour |
 |--------------------|-----------|
 | *(omitted)*        | No value completion; only the flag name is suggested |
 | `file`             | Delegates to bash's default filename completion |
@@ -64,14 +64,14 @@ Control how the flag's **value** is completed using `?complete=`:
 | `<validation-name>` | Calls the named `validation` function to get dynamic candidates |
 
 ```
-@shgen argument ?parent=deploy ?complete=image-tags  --tag     Image tag to deploy
-@shgen argument ?parent=deploy ?complete=file        --values  Path to a values file
-@shgen argument ?parent=deploy ?complete=none        --secret  A secret value (no completion)
+@shgen argument parent=deploy complete=image-tags  --tag     Image tag to deploy
+@shgen argument parent=deploy complete=file        --values  Path to a values file
+@shgen argument parent=deploy complete=none        --secret  A secret value (no completion)
 ```
 
 ### `validation`
 
-Defines a named completion function. The `[script]` is a single shell expression that prints newline-separated completion candidates to stdout. Reference it from `argument` annotations using `?complete=<name>`.
+Defines a named completion function. The `[script]` is a single shell expression that prints newline-separated completion candidates to stdout. Reference it from `argument` annotations using `complete=<name>`.
 
 ```
 @shgen validation image-tags  echo -e "latest\nstable\nv1.0.0"
@@ -100,7 +100,7 @@ Wire the passthrough into a catch-all argument on the root module using a `valid
 
 ```
 @shgen validation kubectl-passthrough  _my_kubectl_passthrough
-@shgen argument  ?parent=my-kubectl-wrapper ?complete=kubectl-passthrough  Pass-through to kubectl
+@shgen argument  parent=my-kubectl-wrapper complete=kubectl-passthrough  Pass-through to kubectl
 ```
 
 ## Example
@@ -110,10 +110,10 @@ Wire the passthrough into a catch-all argument on the root module using a `valid
 
 # @shgen validation envs  echo -e "dev\nstaging\nprod"
 
-# @shgen command ?parent=my-tool  deploy  Deploy a service to an environment
-# @shgen argument ?parent=deploy  ?complete=envs   --env     Target environment
-# @shgen argument ?parent=deploy  ?complete=file   --config  Path to config file
-# @shgen argument ?parent=deploy  ?complete=none   --dry-run Print plan without deploying
+# @shgen command parent=my-tool  deploy  Deploy a service to an environment
+# @shgen argument parent=deploy  complete=envs   --env     Target environment
+# @shgen argument parent=deploy  complete=file   --config  Path to config file
+# @shgen argument parent=deploy  complete=none   --dry-run Print plan without deploying
 ```
 
 Generate and source the completion script:
@@ -121,7 +121,7 @@ Generate and source the completion script:
 ```bash
 sh-gen -p my-tool -o my-tool-completion.bash my-tool.sh
 source my-tool-completion.bash
-my-tool <TAB><TAB>
+my-tool # <TAB><TAB>
 ```
 
 See [`example.txt`](.dev/example.txt) for a comprehensive multi-command annotation file modelling a fictional `sh-gen-test` CLI, suitable for manual testing of completion behaviour.

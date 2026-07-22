@@ -93,7 +93,7 @@
 # @shgen external _shgen_test_kubectl_passthrough() { type __start_kubectl &>/dev/null || source <(kubectl completion bash 2>/dev/null); __start_kubectl; }
 
 # The passthrough function is wired as a validation so it can be referenced
-# from ?complete= on a positional argument with no flag name.
+# from complete= on a positional argument with no flag name.
 # @shgen validation kubectl-passthrough _shgen_test_kubectl_passthrough
 
 # -----------------------------------------------------------------------------
@@ -101,28 +101,28 @@
 # -----------------------------------------------------------------------------
 
 # --context selects the cluster context; completes from the contexts validation
-# @shgen argument ?parent=sh-gen-test ?complete=contexts --context Select the cluster context to use
+# @shgen argument parent=sh-gen-test complete=contexts --context Select the cluster context to use
 
 # --namespace / -n scopes all operations to a specific namespace
-# @shgen argument ?parent=sh-gen-test ?complete=namespaces --namespace Kubernetes namespace to target (default: default)
+# @shgen argument parent=sh-gen-test complete=namespaces --namespace Kubernetes namespace to target (default: default)
 
 # --output / -o controls output format for commands that produce structured data
-# @shgen argument ?parent=sh-gen-test ?complete=output-formats --output Output format: json, yaml, table, wide, template
+# @shgen argument parent=sh-gen-test complete=output-formats --output Output format: json, yaml, table, wide, template
 
 # --log-level sets global verbosity
-# @shgen argument ?parent=sh-gen-test ?complete=log-levels --log-level Set the log level (debug, info, warn, error)
+# @shgen argument parent=sh-gen-test complete=log-levels --log-level Set the log level (debug, info, warn, error)
 
 # --config points to an alternative config file; file completion is most useful here
-# @shgen argument ?parent=sh-gen-test ?complete=file --config Path to an alternative config file
+# @shgen argument parent=sh-gen-test complete=file --config Path to an alternative config file
 
 # --verbose enables verbose/debug output (boolean flag, no value — complete=none)
-# @shgen argument ?parent=sh-gen-test ?complete=none --verbose Enable verbose output
+# @shgen argument parent=sh-gen-test complete=none --verbose Enable verbose output
 
 # --dry-run prints what would happen without making changes
-# @shgen argument ?parent=sh-gen-test ?complete=none --dry-run Print actions without executing them
+# @shgen argument parent=sh-gen-test complete=none --dry-run Print actions without executing them
 
 # --region sets the cloud provider region for resource operations
-# @shgen argument ?parent=sh-gen-test ?complete=regions --region Cloud provider region override
+# @shgen argument parent=sh-gen-test complete=regions --region Cloud provider region override
 
 # -----------------------------------------------------------------------------
 # Layer 1: top-level commands
@@ -130,196 +130,196 @@
 
 # --- get -----------------------------------------------------------------------
 # Retrieve one or more resources from the cluster
-# @shgen command ?parent=sh-gen-test get Retrieve one or more platform resources
+# @shgen command parent=sh-gen-test get Retrieve one or more platform resources
 
 # Arguments for 'get'
-# @shgen argument ?parent=get --selector Filter resources by label selector (key=value pairs)
-# @shgen argument ?parent=get ?complete=output-formats --output Output format override for this command
-# @shgen argument ?parent=get ?complete=none --watch Stream live updates to the resource list
-# @shgen argument ?parent=get ?complete=namespaces --namespace Namespace scope for this get operation
-# @shgen argument ?parent=get ?complete=none --show-labels Include labels in the output table
-# @shgen argument ?parent=get ?complete=none --all-namespaces List resources across all namespaces
+# @shgen argument parent=get --selector Filter resources by label selector (key=value pairs)
+# @shgen argument parent=get complete=output-formats --output Output format override for this command
+# @shgen argument parent=get complete=none --watch Stream live updates to the resource list
+# @shgen argument parent=get complete=namespaces --namespace Namespace scope for this get operation
+# @shgen argument parent=get complete=none --show-labels Include labels in the output table
+# @shgen argument parent=get complete=none --all-namespaces List resources across all namespaces
 
 # --- describe ------------------------------------------------------------------
 # Show detailed information about a specific resource
-# @shgen command ?parent=sh-gen-test describe Show detailed information about a resource
+# @shgen command parent=sh-gen-test describe Show detailed information about a resource
 
 # Arguments for 'describe'
-# @shgen argument ?parent=describe ?complete=pod-names --name Name of the resource to describe
-# @shgen argument ?parent=describe ?complete=namespaces --namespace Namespace of the resource
-# @shgen argument ?parent=describe ?complete=none --events Include recent events in output
-# @shgen argument ?parent=describe ?complete=none --show-managed-fields Show managed field metadata
+# @shgen argument parent=describe complete=pod-names --name Name of the resource to describe
+# @shgen argument parent=describe complete=namespaces --namespace Namespace of the resource
+# @shgen argument parent=describe complete=none --events Include recent events in output
+# @shgen argument parent=describe complete=none --show-managed-fields Show managed field metadata
 
 # --- apply ---------------------------------------------------------------------
 # Apply a configuration manifest to the cluster from a file or directory
-# @shgen command ?parent=sh-gen-test apply Apply a configuration manifest to the cluster
+# @shgen command parent=sh-gen-test apply Apply a configuration manifest to the cluster
 
 # Arguments for 'apply'
-# @shgen argument ?parent=apply ?complete=file --filename Path to the manifest file or directory to apply
-# @shgen argument ?parent=apply ?complete=none --recursive Recursively process manifest files in directories
-# @shgen argument ?parent=apply ?complete=none --force Force re-apply even when no diff is detected
-# @shgen argument ?parent=apply ?complete=none --prune Delete resources not present in the manifest
-# @shgen argument ?parent=apply ?complete=output-formats --output Output format for the operation result
-# @shgen argument ?parent=apply ?complete=none --server-side Use server-side apply strategy
-# @shgen argument ?parent=apply ?complete=none --validate Run manifest validation before applying
+# @shgen argument parent=apply complete=file --filename Path to the manifest file or directory to apply
+# @shgen argument parent=apply complete=none --recursive Recursively process manifest files in directories
+# @shgen argument parent=apply complete=none --force Force re-apply even when no diff is detected
+# @shgen argument parent=apply complete=none --prune Delete resources not present in the manifest
+# @shgen argument parent=apply complete=output-formats --output Output format for the operation result
+# @shgen argument parent=apply complete=none --server-side Use server-side apply strategy
+# @shgen argument parent=apply complete=none --validate Run manifest validation before applying
 
 # --- delete --------------------------------------------------------------------
 # Remove one or more resources from the cluster
-# @shgen command ?parent=sh-gen-test delete Remove one or more platform resources
+# @shgen command parent=sh-gen-test delete Remove one or more platform resources
 
 # Arguments for 'delete'
-# @shgen argument ?parent=delete ?complete=pod-names --name Name of the resource to delete
-# @shgen argument ?parent=delete ?complete=namespaces --namespace Namespace of the resource to delete
-# @shgen argument ?parent=delete ?complete=none --force Force immediate deletion bypassing graceful termination
-# @shgen argument ?parent=delete ?complete=durations --grace-period Override the grace period seconds before deletion
-# @shgen argument ?parent=delete ?complete=bool-values --cascade Also delete dependent resources (default: true)
-# @shgen argument ?parent=delete ?complete=none --wait Wait until the resource is fully deleted before returning
+# @shgen argument parent=delete complete=pod-names --name Name of the resource to delete
+# @shgen argument parent=delete complete=namespaces --namespace Namespace of the resource to delete
+# @shgen argument parent=delete complete=none --force Force immediate deletion bypassing graceful termination
+# @shgen argument parent=delete complete=durations --grace-period Override the grace period seconds before deletion
+# @shgen argument parent=delete complete=bool-values --cascade Also delete dependent resources (default: true)
+# @shgen argument parent=delete complete=none --wait Wait until the resource is fully deleted before returning
 
 # --- logs ----------------------------------------------------------------------
 # Stream or retrieve logs from a running container
-# @shgen command ?parent=sh-gen-test logs Stream or retrieve logs from a running container
+# @shgen command parent=sh-gen-test logs Stream or retrieve logs from a running container
 
 # Arguments for 'logs'
-# @shgen argument ?parent=logs ?complete=pod-names --pod Name of the pod to retrieve logs from
-# @shgen argument ?parent=logs ?complete=none --container Name of the container within the pod
-# @shgen argument ?parent=logs ?complete=none --follow Stream logs in real-time (tail -f equivalent)
-# @shgen argument ?parent=logs ?complete=none --previous Retrieve logs from the previously terminated container
-# @shgen argument ?parent=logs ?complete=tail-lines --tail Number of recent log lines to show (default: -1 = all)
-# @shgen argument ?parent=logs ?complete=durations --since Only return logs newer than a relative duration e.g. 5m
-# @shgen argument ?parent=logs ?complete=log-levels --level Minimum log level to include in output
-# @shgen argument ?parent=logs ?complete=file --output-file Write logs to a local file instead of stdout
+# @shgen argument parent=logs complete=pod-names --pod Name of the pod to retrieve logs from
+# @shgen argument parent=logs complete=none --container Name of the container within the pod
+# @shgen argument parent=logs complete=none --follow Stream logs in real-time (tail -f equivalent)
+# @shgen argument parent=logs complete=none --previous Retrieve logs from the previously terminated container
+# @shgen argument parent=logs complete=tail-lines --tail Number of recent log lines to show (default: -1 = all)
+# @shgen argument parent=logs complete=durations --since Only return logs newer than a relative duration e.g. 5m
+# @shgen argument parent=logs complete=log-levels --level Minimum log level to include in output
+# @shgen argument parent=logs complete=file --output-file Write logs to a local file instead of stdout
 
 # --- exec ----------------------------------------------------------------------
 # Execute a command inside a running container
-# @shgen command ?parent=sh-gen-test exec Execute a command inside a running container
+# @shgen command parent=sh-gen-test exec Execute a command inside a running container
 
 # Arguments for 'exec'
-# @shgen argument ?parent=exec ?complete=pod-names --pod Target pod name
-# @shgen argument ?parent=exec ?complete=none --container Target container name within the pod
-# @shgen argument ?parent=exec ?complete=none --stdin Pass stdin to the container
-# @shgen argument ?parent=exec ?complete=none --tty Allocate a TTY for the session
-# @shgen argument ?parent=exec ?complete=none -- Command separator: everything after -- is the command
+# @shgen argument parent=exec complete=pod-names --pod Target pod name
+# @shgen argument parent=exec complete=none --container Target container name within the pod
+# @shgen argument parent=exec complete=none --stdin Pass stdin to the container
+# @shgen argument parent=exec complete=none --tty Allocate a TTY for the session
+# @shgen argument parent=exec complete=none -- Command separator: everything after -- is the command
 
 # --- scale ---------------------------------------------------------------------
 # Scale a deployment up or down
-# @shgen command ?parent=sh-gen-test scale Scale a deployment or replica set
+# @shgen command parent=sh-gen-test scale Scale a deployment or replica set
 
 # Arguments for 'scale'
-# @shgen argument ?parent=scale ?complete=service-names --name Name of the deployment or replica set to scale
-# @shgen argument ?parent=scale ?complete=replica-counts --replicas Target number of replicas
-# @shgen argument ?parent=scale ?complete=namespaces --namespace Namespace containing the resource
-# @shgen argument ?parent=scale ?complete=durations --timeout Maximum time to wait for the scale operation
-# @shgen argument ?parent=scale ?complete=replica-counts --current-replicas Assert current replica count before scaling
+# @shgen argument parent=scale complete=service-names --name Name of the deployment or replica set to scale
+# @shgen argument parent=scale complete=replica-counts --replicas Target number of replicas
+# @shgen argument parent=scale complete=namespaces --namespace Namespace containing the resource
+# @shgen argument parent=scale complete=durations --timeout Maximum time to wait for the scale operation
+# @shgen argument parent=scale complete=replica-counts --current-replicas Assert current replica count before scaling
 
 # --- rollout -------------------------------------------------------------------
 # Manage rollout lifecycle: status, history, undo, pause, resume
-# @shgen command ?parent=sh-gen-test rollout Manage deployment rollout lifecycle
+# @shgen command parent=sh-gen-test rollout Manage deployment rollout lifecycle
 
 # Arguments for 'rollout'
-# @shgen argument ?parent=rollout ?complete=service-names --name Name of the deployment to manage
-# @shgen argument ?parent=rollout ?complete=namespaces --namespace Namespace of the deployment
-# @shgen argument ?parent=rollout ?complete=none --revision Specific revision number to roll back to
-# @shgen argument ?parent=rollout ?complete=rollout-actions --action Rollout action: status, history, undo, pause, resume
+# @shgen argument parent=rollout complete=service-names --name Name of the deployment to manage
+# @shgen argument parent=rollout complete=namespaces --namespace Namespace of the deployment
+# @shgen argument parent=rollout complete=none --revision Specific revision number to roll back to
+# @shgen argument parent=rollout complete=rollout-actions --action Rollout action: status, history, undo, pause, resume
 
 # --- deploy --------------------------------------------------------------------
 # Build and deploy a service image to the cluster
-# @shgen command ?parent=sh-gen-test deploy Build and deploy a service to the cluster
+# @shgen command parent=sh-gen-test deploy Build and deploy a service to the cluster
 
 # Arguments for 'deploy'
-# @shgen argument ?parent=deploy ?complete=service-names --service Name of the service to deploy
-# @shgen argument ?parent=deploy ?complete=image-tags --tag Image tag to deploy
-# @shgen argument ?parent=deploy ?complete=regions --region Target region for this deployment
-# @shgen argument ?parent=deploy ?complete=namespaces --namespace Target namespace for the deployment
-# @shgen argument ?parent=deploy ?complete=file --values-file Path to a values override file
-# @shgen argument ?parent=deploy ?complete=bool-values --wait Wait for the rollout to complete before returning
-# @shgen argument ?parent=deploy ?complete=durations --timeout Timeout duration for the deploy wait (e.g. 5m)
-# @shgen argument ?parent=deploy ?complete=none --skip-tests Skip pre-deploy test suite execution
-# @shgen argument ?parent=deploy ?complete=none --canary Deploy as a canary release (small traffic percentage)
+# @shgen argument parent=deploy complete=service-names --service Name of the service to deploy
+# @shgen argument parent=deploy complete=image-tags --tag Image tag to deploy
+# @shgen argument parent=deploy complete=regions --region Target region for this deployment
+# @shgen argument parent=deploy complete=namespaces --namespace Target namespace for the deployment
+# @shgen argument parent=deploy complete=file --values-file Path to a values override file
+# @shgen argument parent=deploy complete=bool-values --wait Wait for the rollout to complete before returning
+# @shgen argument parent=deploy complete=durations --timeout Timeout duration for the deploy wait (e.g. 5m)
+# @shgen argument parent=deploy complete=none --skip-tests Skip pre-deploy test suite execution
+# @shgen argument parent=deploy complete=none --canary Deploy as a canary release (small traffic percentage)
 
 # --- config --------------------------------------------------------------------
 # Manage cluster configuration: contexts, credentials, defaults
-# @shgen command ?parent=sh-gen-test config Manage cluster and credential configuration
+# @shgen command parent=sh-gen-test config Manage cluster and credential configuration
 
 # Arguments for 'config'
-# @shgen argument ?parent=config ?complete=config-actions --action Config action: get-contexts, use-context, set, unset, view
-# @shgen argument ?parent=config ?complete=contexts --context Context name to act on
-# @shgen argument ?parent=config ?complete=file --kubeconfig Path to the kubeconfig file
-# @shgen argument ?parent=config ?complete=output-formats --output Output format for config view
-# @shgen argument ?parent=config ?complete=none --flatten Flatten multiple kubeconfig files into one
+# @shgen argument parent=config complete=config-actions --action Config action: get-contexts, use-context, set, unset, view
+# @shgen argument parent=config complete=contexts --context Context name to act on
+# @shgen argument parent=config complete=file --kubeconfig Path to the kubeconfig file
+# @shgen argument parent=config complete=output-formats --output Output format for config view
+# @shgen argument parent=config complete=none --flatten Flatten multiple kubeconfig files into one
 
 # --- secret --------------------------------------------------------------------
 # Create, read, and manage secrets stored in the cluster vault
-# @shgen command ?parent=sh-gen-test secret Create, read and manage cluster secrets
+# @shgen command parent=sh-gen-test secret Create, read and manage cluster secrets
 
 # Arguments for 'secret'
-# @shgen argument ?parent=secret ?complete=secret-actions --action Secret action: create, get, delete, list, rotate
-# @shgen argument ?parent=secret ?complete=secret-names --name Name of the secret to act on
-# @shgen argument ?parent=secret ?complete=namespaces --namespace Namespace for the secret
-# @shgen argument ?parent=secret ?complete=none --value Secret value (use with create; prefer --value-file)
-# @shgen argument ?parent=secret ?complete=file --value-file File containing the secret value
-# @shgen argument ?parent=secret ?complete=none --from-env Populate secret from current environment variables
-# @shgen argument ?parent=secret ?complete=output-formats --output Output format for list and get actions
-# @shgen argument ?parent=secret ?complete=none --encrypt-at-rest Store with additional at-rest encryption layer
+# @shgen argument parent=secret complete=secret-actions --action Secret action: create, get, delete, list, rotate
+# @shgen argument parent=secret complete=secret-names --name Name of the secret to act on
+# @shgen argument parent=secret complete=namespaces --namespace Namespace for the secret
+# @shgen argument parent=secret complete=none --value Secret value (use with create; prefer --value-file)
+# @shgen argument parent=secret complete=file --value-file File containing the secret value
+# @shgen argument parent=secret complete=none --from-env Populate secret from current environment variables
+# @shgen argument parent=secret complete=output-formats --output Output format for list and get actions
+# @shgen argument parent=secret complete=none --encrypt-at-rest Store with additional at-rest encryption layer
 
 # --- node ----------------------------------------------------------------------
 # Inspect and manage cluster nodes
-# @shgen command ?parent=sh-gen-test node Inspect and manage cluster nodes
+# @shgen command parent=sh-gen-test node Inspect and manage cluster nodes
 
 # Arguments for 'node'
-# @shgen argument ?parent=node ?complete=node-actions --action Node action: list, describe, cordon, uncordon, drain, taint
-# @shgen argument ?parent=node ?complete=node-names --name Name of the node to act on
-# @shgen argument ?parent=node ?complete=none --force Force the action (e.g. ignore daemon sets during drain)
-# @shgen argument ?parent=node ?complete=none --ignore-daemonsets Ignore daemon set pods when draining
-# @shgen argument ?parent=node ?complete=none --delete-emptydir-data Delete pods using emptyDir storage during drain
-# @shgen argument ?parent=node ?complete=output-formats --output Output format
+# @shgen argument parent=node complete=node-actions --action Node action: list, describe, cordon, uncordon, drain, taint
+# @shgen argument parent=node complete=node-names --name Name of the node to act on
+# @shgen argument parent=node complete=none --force Force the action (e.g. ignore daemon sets during drain)
+# @shgen argument parent=node complete=none --ignore-daemonsets Ignore daemon set pods when draining
+# @shgen argument parent=node complete=none --delete-emptydir-data Delete pods using emptyDir storage during drain
+# @shgen argument parent=node complete=output-formats --output Output format
 
 # --- volume --------------------------------------------------------------------
 # Manage persistent volumes and volume claims
-# @shgen command ?parent=sh-gen-test volume Manage persistent volumes and claims
+# @shgen command parent=sh-gen-test volume Manage persistent volumes and claims
 
 # Arguments for 'volume'
-# @shgen argument ?parent=volume ?complete=volume-actions --action Volume action: list, create, delete, resize, describe
-# @shgen argument ?parent=volume ?complete=none --name Name of the volume or claim
-# @shgen argument ?parent=volume ?complete=namespaces --namespace Namespace for the persistent volume claim
-# @shgen argument ?parent=volume ?complete=volume-types --type Volume type (emptyDir, hostPath, pvc, configMap, secret)
-# @shgen argument ?parent=volume ?complete=none --size Requested storage size (e.g. 10Gi)
-# @shgen argument ?parent=volume ?complete=none --storage-class Storage class name to use for provisioning
-# @shgen argument ?parent=volume ?complete=output-formats --output Output format
+# @shgen argument parent=volume complete=volume-actions --action Volume action: list, create, delete, resize, describe
+# @shgen argument parent=volume complete=none --name Name of the volume or claim
+# @shgen argument parent=volume complete=namespaces --namespace Namespace for the persistent volume claim
+# @shgen argument parent=volume complete=volume-types --type Volume type (emptyDir, hostPath, pvc, configMap, secret)
+# @shgen argument parent=volume complete=none --size Requested storage size (e.g. 10Gi)
+# @shgen argument parent=volume complete=none --storage-class Storage class name to use for provisioning
+# @shgen argument parent=volume complete=output-formats --output Output format
 
 # --- port-forward --------------------------------------------------------------
 # Forward one or more local ports to a pod
-# @shgen command ?parent=sh-gen-test port-forward Forward local ports to a running pod
+# @shgen command parent=sh-gen-test port-forward Forward local ports to a running pod
 
 # Arguments for 'port-forward'
-# @shgen argument ?parent=port-forward ?complete=pod-names --pod Target pod name
-# @shgen argument ?parent=port-forward ?complete=namespaces --namespace Namespace of the pod
-# @shgen argument ?parent=port-forward ?complete=namespaces -n
-# @shgen argument ?parent=port-forward ?complete=none --address Local address to bind (default: localhost)
-# @shgen argument ?parent=port-forward ?complete=none --ports Local:remote port mapping (e.g. 8080:80)
-# @shgen argument ?parent=port-forward ?complete=none -p
+# @shgen argument parent=port-forward complete=pod-names --pod Target pod name
+# @shgen argument parent=port-forward complete=namespaces --namespace Namespace of the pod
+# @shgen argument parent=port-forward complete=namespaces -n
+# @shgen argument parent=port-forward complete=none --address Local address to bind (default: localhost)
+# @shgen argument parent=port-forward complete=none --ports Local:remote port mapping (e.g. 8080:80)
+# @shgen argument parent=port-forward complete=none -p
 
 # --- events --------------------------------------------------------------------
 # List recent cluster and namespace events
-# @shgen command ?parent=sh-gen-test events List recent cluster and namespace-scoped events
+# @shgen command parent=sh-gen-test events List recent cluster and namespace-scoped events
 
 # Arguments for 'events'
-# @shgen argument ?parent=events ?complete=namespaces --namespace Filter events to a specific namespace
-# @shgen argument ?parent=events ?complete=none --watch Stream live events as they occur
-# @shgen argument ?parent=events ?complete=none --since Only show events newer than a relative duration
-# @shgen argument ?parent=events ?complete=output-formats --output Output format for event listing
+# @shgen argument parent=events complete=namespaces --namespace Filter events to a specific namespace
+# @shgen argument parent=events complete=none --watch Stream live events as they occur
+# @shgen argument parent=events complete=none --since Only show events newer than a relative duration
+# @shgen argument parent=events complete=output-formats --output Output format for event listing
 
 # --- version -------------------------------------------------------------------
 # Print the client and server version information
-# @shgen command ?parent=sh-gen-test version Print client and server version information
+# @shgen command parent=sh-gen-test version Print client and server version information
 
 # Arguments for 'version'
-# @shgen argument ?parent=version ?complete=output-formats --output Output format: json, yaml, table
-# @shgen argument ?parent=version ?complete=none --client-only Only print the client version, skip server check
+# @shgen argument parent=version complete=output-formats --output Output format: json, yaml, table
+# @shgen argument parent=version complete=none --client-only Only print the client version, skip server check
 
 # --- completion ----------------------------------------------------------------
 # Output a bash/zsh/fish completion script for the CLI itself
-# @shgen command ?parent=sh-gen-test completion Generate a shell completion script
+# @shgen command parent=sh-gen-test completion Generate a shell completion script
 
 # Arguments for 'completion'
-# @shgen argument ?parent=completion ?complete=shells --shell Target shell: bash, zsh, fish
-# @shgen argument ?parent=completion ?complete=file --output Write the completion script to this file
+# @shgen argument parent=completion complete=shells --shell Target shell: bash, zsh, fish
+# @shgen argument parent=completion complete=file --output Write the completion script to this file
