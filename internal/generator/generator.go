@@ -15,18 +15,18 @@ import (
 
 // Options controls generation behaviour.
 type Options struct {
-	// ProgramName is the name of the top-level command (e.g. "my-script").
-	// If empty it is derived from the root module name.
-	ProgramName string
+  // ProgramName is the name of the top-level command (e.g. "my-script").
+  // If empty it is derived from the root module name.
+  ProgramName string
 }
 
 // Generate writes a bash completion script for tree to w.
 func Generate(w io.Writer, tree *model.Tree, opts Options) error {
-	ctx, err := buildContext(tree, opts)
-	if err != nil {
-		return err
-	}
-	return completionTmpl.Execute(w, ctx)
+  ctx, err := buildContext(tree, opts)
+  if err != nil {
+    return err
+  }
+  return completionTmpl.Execute(w, ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -34,43 +34,43 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 // ---------------------------------------------------------------------------
 
 type tmplContext struct {
-	ProgramName    string
-	FuncName       string
-	RootArgs       []tmplArg
-	Commands       []tmplCommand
-	Validations    []tmplValidation
-	Externals      []string
-	HasValidations bool
+  ProgramName    string
+  FuncName       string
+  RootArgs       []tmplArg
+  Commands       []tmplCommand
+  Validations    []tmplValidation
+  Externals      []string
+  HasValidations bool
 }
 
 // CompletionMode controls how an argument's value is completed.
 type CompletionMode int
 
 const (
-	CompleteModeDefault  CompletionMode = iota // no special value completion
-	CompleteModeFile                           // fall back to filename completion
-	CompleteModeNone                           // suppress all completions for value
-	CompleteModeValidate                       // call a validation function
+  CompleteModeDefault  CompletionMode = iota // no special value completion
+  CompleteModeFile                           // fall back to filename completion
+  CompleteModeNone                           // suppress all completions for value
+  CompleteModeValidate                       // call a validation function
 )
 
 type tmplArg struct {
-	Name            string
-	Description     string
-	ValidateFn      string         // non-empty if dynamic completion via validation
-	ValueMode       CompletionMode // how to complete the value after this flag
-	ValueValidateFn string         // validation fn for value (when ValueMode==CompleteModeValidate via Complete=)
+  Name            string
+  Description     string
+  ValidateFn      string         // non-empty if dynamic completion via validation
+  ValueMode       CompletionMode // how to complete the value after this flag
+  ValueValidateFn string         // validation fn for value (when ValueMode==CompleteModeValidate via Complete=)
 }
 
 type tmplCommand struct {
-	Name        string
-	Description string
-	Args        []tmplArg
-	FuncName    string // unique function name for sub-completion
+  Name        string
+  Description string
+  Args        []tmplArg
+  FuncName    string // unique function name for sub-completion
 }
 
 type tmplValidation struct {
-	FuncName string
-	Script   string
+  FuncName string
+  Script   string
 }
 
 // ---------------------------------------------------------------------------
@@ -78,138 +78,138 @@ type tmplValidation struct {
 // ---------------------------------------------------------------------------
 
 func buildContext(tree *model.Tree, opts Options) (tmplContext, error) {
-	programName := opts.ProgramName
-	if programName == "" {
-		roots := tree.RootModules()
-		for _, r := range roots {
-			if r.Name != "" {
-				programName = r.Name
-				break
-			}
-		}
-	}
-	if programName == "" {
-		programName = "program"
-	}
+  programName := opts.ProgramName
+  if programName == "" {
+    roots := tree.RootModules()
+    for _, r := range roots {
+      if r.Name != "" {
+        programName = r.Name
+        break
+      }
+    }
+  }
+  if programName == "" {
+    programName = "program"
+  }
 
-	funcName := sanitizeFuncName(programName)
+  funcName := sanitizeFuncName(programName)
 
-	ctx := tmplContext{
-		ProgramName: programName,
-		FuncName:    funcName,
-	}
+  ctx := tmplContext{
+    ProgramName: programName,
+    FuncName:    funcName,
+  }
 
-	for _, v := range tree.Validations {
-		ctx.Validations = append(ctx.Validations, tmplValidation{
-			FuncName: "_shgen_validate_" + sanitizeFuncName(v.Name),
-			Script:   v.Script,
-		})
-	}
-	ctx.HasValidations = len(ctx.Validations) > 0
-	ctx.Externals = tree.Externals
+  for _, v := range tree.Validations {
+    ctx.Validations = append(ctx.Validations, tmplValidation{
+      FuncName: "_shgen_validate_" + sanitizeFuncName(v.Name),
+      Script:   v.Script,
+    })
+  }
+  ctx.HasValidations = len(ctx.Validations) > 0
+  ctx.Externals = tree.Externals
 
-	rootMod := tree.Modules[""]
-	namedRoot := tree.Modules[programName]
+  rootMod := tree.Modules[""]
+  namedRoot := tree.Modules[programName]
 
-	for _, arg := range moduleArgs(rootMod) {
-		ctx.RootArgs = append(ctx.RootArgs, arg)
-	}
-	for _, arg := range moduleArgs(namedRoot) {
-		ctx.RootArgs = append(ctx.RootArgs, arg)
-	}
+  for _, arg := range moduleArgs(rootMod) {
+    ctx.RootArgs = append(ctx.RootArgs, arg)
+  }
+  for _, arg := range moduleArgs(namedRoot) {
+    ctx.RootArgs = append(ctx.RootArgs, arg)
+  }
 
-	seen := map[string]bool{}
-	for _, cmd := range moduleCommands(rootMod) {
-		if seen[cmd.Name] {
-			continue
-		}
-		seen[cmd.Name] = true
-		ctx.Commands = append(ctx.Commands, buildCommand(cmd, funcName))
-	}
-	for _, cmd := range moduleCommands(namedRoot) {
-		if seen[cmd.Name] {
-			continue
-		}
-		seen[cmd.Name] = true
-		ctx.Commands = append(ctx.Commands, buildCommand(cmd, funcName))
-	}
+  seen := map[string]bool{}
+  for _, cmd := range moduleCommands(rootMod) {
+    if seen[cmd.Name] {
+      continue
+    }
+    seen[cmd.Name] = true
+    ctx.Commands = append(ctx.Commands, buildCommand(cmd, funcName))
+  }
+  for _, cmd := range moduleCommands(namedRoot) {
+    if seen[cmd.Name] {
+      continue
+    }
+    seen[cmd.Name] = true
+    ctx.Commands = append(ctx.Commands, buildCommand(cmd, funcName))
+  }
 
-	for _, m := range tree.RootModules() {
-		if m.Name == "" || m.Name == programName {
-			continue
-		}
-		for _, cmd := range m.Commands {
-			if seen[cmd.Name] {
-				continue
-			}
-			seen[cmd.Name] = true
-			ctx.Commands = append(ctx.Commands, buildCommand(cmd, funcName))
-		}
-		for _, arg := range moduleArgs(m) {
-			ctx.RootArgs = append(ctx.RootArgs, arg)
-		}
-	}
+  for _, m := range tree.RootModules() {
+    if m.Name == "" || m.Name == programName {
+      continue
+    }
+    for _, cmd := range m.Commands {
+      if seen[cmd.Name] {
+        continue
+      }
+      seen[cmd.Name] = true
+      ctx.Commands = append(ctx.Commands, buildCommand(cmd, funcName))
+    }
+    for _, arg := range moduleArgs(m) {
+      ctx.RootArgs = append(ctx.RootArgs, arg)
+    }
+  }
 
-	return ctx, nil
+  return ctx, nil
 }
 
 func moduleArgs(m *model.Module) []tmplArg {
-	if m == nil {
-		return nil
-	}
-	var args []tmplArg
-	for _, a := range m.Arguments {
-		args = append(args, buildArg(a))
-	}
-	return args
+  if m == nil {
+    return nil
+  }
+  var args []tmplArg
+  for _, a := range m.Arguments {
+    args = append(args, buildArg(a))
+  }
+  return args
 }
 
 func moduleCommands(m *model.Module) []*model.Command {
-	if m == nil {
-		return nil
-	}
-	return m.Commands
+  if m == nil {
+    return nil
+  }
+  return m.Commands
 }
 
 func buildCommand(cmd *model.Command, parentFuncName string) tmplCommand {
-	tc := tmplCommand{
-		Name:        cmd.Name,
-		Description: cmd.Description,
-		FuncName:    parentFuncName + "_" + sanitizeFuncName(cmd.Name),
-	}
-	for _, a := range cmd.Arguments {
-		tc.Args = append(tc.Args, buildArg(a))
-	}
-	return tc
+  tc := tmplCommand{
+    Name:        cmd.Name,
+    Description: cmd.Description,
+    FuncName:    parentFuncName + "_" + sanitizeFuncName(cmd.Name),
+  }
+  for _, a := range cmd.Arguments {
+    tc.Args = append(tc.Args, buildArg(a))
+  }
+  return tc
 }
 
 // buildArg converts a model.Argument into a tmplArg, resolving completion mode.
 func buildArg(a *model.Argument) tmplArg {
-	ta := tmplArg{
-		Name:        a.Name,
-		Description: a.Description,
-	}
-	if a.Validate != "" {
-		ta.ValidateFn = "_shgen_validate_" + sanitizeFuncName(a.Validate)
-	}
-	switch a.Complete {
-	case "file":
-		ta.ValueMode = CompleteModeFile
-	case "none":
-		ta.ValueMode = CompleteModeNone
-	case "":
-		ta.ValueMode = CompleteModeDefault
-	default:
-		ta.ValueMode = CompleteModeValidate
-		ta.ValueValidateFn = "_shgen_validate_" + sanitizeFuncName(a.Complete)
-	}
-	return ta
+  ta := tmplArg{
+    Name:        a.Name,
+    Description: a.Description,
+  }
+  if a.Validate != "" {
+    ta.ValidateFn = "_shgen_validate_" + sanitizeFuncName(a.Validate)
+  }
+  switch a.Complete {
+  case "file":
+    ta.ValueMode = CompleteModeFile
+  case "none":
+    ta.ValueMode = CompleteModeNone
+  case "":
+    ta.ValueMode = CompleteModeDefault
+  default:
+    ta.ValueMode = CompleteModeValidate
+    ta.ValueValidateFn = "_shgen_validate_" + sanitizeFuncName(a.Complete)
+  }
+  return ta
 }
 
 // sanitizeFuncName converts a string into a valid bash function name component.
 func sanitizeFuncName(s string) string {
-	r := strings.NewReplacer("-", "_", ".", "_", "/", "_", " ", "_")
-	return r.Replace(s)
+  r := strings.NewReplacer("-", "_", ".", "_", "/", "_", " ", "_")
+  return r.Replace(s)
 }
 
 // ---------------------------------------------------------------------------
@@ -217,34 +217,34 @@ func sanitizeFuncName(s string) string {
 // ---------------------------------------------------------------------------
 
 var funcMap = template.FuncMap{
-	"hasArgs": func(args []tmplArg) bool {
-		return len(args) > 0
-	},
-	"hasCmds": func(cmds []tmplCommand) bool {
-		return len(cmds) > 0
-	},
-	"quote": func(s string) string {
-		return fmt.Sprintf("%q", s)
-	},
-	"hasValueCompletion": func(args []tmplArg) bool {
-		for _, a := range args {
-			if a.ValueMode != CompleteModeDefault {
-				return true
-			}
-		}
-		return false
-	},
-	"hasValidateFn": func(args []tmplArg) bool {
-		for _, a := range args {
-			if a.ValidateFn != "" {
-				return true
-			}
-		}
-		return false
-	},
-	"modeFile":     func() CompletionMode { return CompleteModeFile },
-	"modeNone":     func() CompletionMode { return CompleteModeNone },
-	"modeValidate": func() CompletionMode { return CompleteModeValidate },
+  "hasArgs": func(args []tmplArg) bool {
+    return len(args) > 0
+  },
+  "hasCmds": func(cmds []tmplCommand) bool {
+    return len(cmds) > 0
+  },
+  "quote": func(s string) string {
+    return fmt.Sprintf("%q", s)
+  },
+  "hasValueCompletion": func(args []tmplArg) bool {
+    for _, a := range args {
+      if a.ValueMode != CompleteModeDefault {
+        return true
+      }
+    }
+    return false
+  },
+  "hasValidateFn": func(args []tmplArg) bool {
+    for _, a := range args {
+      if a.ValidateFn != "" {
+        return true
+      }
+    }
+    return false
+  },
+  "modeFile":     func() CompletionMode { return CompleteModeFile },
+  "modeNone":     func() CompletionMode { return CompleteModeNone },
+  "modeValidate": func() CompletionMode { return CompleteModeValidate },
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +314,7 @@ _shgen_compreply_with_descriptions() {
                 printf "  %s\n" "${name}" >&2
             fi
         done
-				
+        
         # Use a single empty string rather than an empty array so bash does not
         # fall back to -o default (filename) completion after we have already
         # printed our own description list.
@@ -459,5 +459,5 @@ complete -o default -F _{{ .FuncName }}_completions {{ .ProgramName }}
 `
 
 var completionTmpl = template.Must(
-	template.New("completion").Funcs(funcMap).Parse(completionTemplateText),
+  template.New("completion").Funcs(funcMap).Parse(completionTemplateText),
 )
