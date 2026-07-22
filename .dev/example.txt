@@ -293,8 +293,10 @@
 # Arguments for 'port-forward'
 # @shgen argument ?parent=port-forward ?complete=pod-names --pod Target pod name
 # @shgen argument ?parent=port-forward ?complete=namespaces --namespace Namespace of the pod
+# @shgen argument ?parent=port-forward ?complete=namespaces -n
 # @shgen argument ?parent=port-forward ?complete=none --address Local address to bind (default: localhost)
 # @shgen argument ?parent=port-forward ?complete=none --ports Local:remote port mapping (e.g. 8080:80)
+# @shgen argument ?parent=port-forward ?complete=none -p
 
 # --- events --------------------------------------------------------------------
 # List recent cluster and namespace events

@@ -311,7 +311,7 @@ _shgen_compreply_with_descriptions() {
             if [[ -n "${desc}" ]]; then
                 printf "  %-*s  (%s)\n" "${maxw}" "${name}" "${desc}" >&2
             else
-                printf "  %s\n" "${name}" >&2
+                printf "  %3s\n" "${name}" >&2
             fi
         done
         
