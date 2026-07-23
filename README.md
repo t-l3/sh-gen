@@ -8,8 +8,12 @@
 sh-gen [flags] <file> [file...]
 
 Flags:
-  -o <file>   Write output to <file> instead of stdout
-  -p <name>   Override the program name in the generated completion script
+  -o, --output <file>
+              Write output to <file> instead of stdout
+  -p, --process <name>
+              Override the program name in the generated completion script
+  -s, --semantic-groups
+              When enabled, prefixes command and argument groups with "Available commands:" or "Available arguments:"
 ```
 
 Annotations can appear in any file — shell scripts, Go source, Python, plain text — anywhere a line contains `@shgen`. Lines that don't contain a recognised annotation are silently ignored.
@@ -19,9 +23,9 @@ Annotations can appear in any file — shell scripts, Go source, Python, plain t
 Annotation arguments preceded with a `?` are optional:
 
 ```
-@shgen module    ?parent=[parent]                     [name]  [description]
-@shgen command   ?parent=[parent]                     [name]  [description]
-@shgen argument  ?parent=[parent]  ?complete=[mode]  ?[name]  [description]
+@shgen module    ?parent=[parent]                                      [name]  [description]
+@shgen command   ?parent=[parent]                                      [name]  [description]
+@shgen argument  ?parent=[parent]  ?complete=[mode] ?alternate=[name] ?[name]  [description]
 
 @shgen validation  [name]  [script]
 @shgen external            [script]
@@ -50,8 +54,10 @@ A command is a subcommand of a module. Attach it to a module with `parent=`.
 
 An argument is a flag or positional parameter. It can be attached to a command or module with `parent=`. The flag name (e.g. `--output`) is optional — omit it for positional arguments.
 
+You can specify an alternate or short name for the flag using `alternate=`.
+
 ```
-@shgen argument parent=deploy --tag  Image tag to deploy
+@shgen argument parent=deploy alternate=-t --tag  Image tag to deploy
 ```
 
 Control how the flag's **value** is completed using `complete=`:

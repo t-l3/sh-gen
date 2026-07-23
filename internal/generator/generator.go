@@ -18,6 +18,10 @@ type Options struct {
 	// ProgramName is the name of the top-level command (e.g. "my-script").
 	// If empty it is derived from the root module name.
 	ProgramName string
+
+	// UseSemanticGroups if true will prefix blocks of commands and arguments with
+	// "Available [commands|arguments]:" to help semantically distinguish each type.
+	UseSemanticGroups bool
 }
 
 // Generate writes a bash completion script for tree to w.
@@ -34,13 +38,14 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 // ---------------------------------------------------------------------------
 
 type tmplContext struct {
-	ProgramName    string
-	FuncName       string
-	RootArgs       []tmplArg
-	Commands       []tmplCommand
-	Validations    []tmplValidation
-	Externals      []string
-	HasValidations bool
+	ProgramName       string
+	FuncName          string
+	RootArgs          []tmplArg
+	Commands          []tmplCommand
+	Validations       []tmplValidation
+	Externals         []string
+	HasValidations    bool
+	UseSemanticGroups bool
 }
 
 // CompletionMode controls how an argument's value is completed.
@@ -56,6 +61,7 @@ const (
 type tmplArg struct {
 	Name            string
 	Description     string
+	Alternate       string         // an alternate argument name or shortname
 	ValidateFn      string         // non-empty if dynamic completion via validation
 	ValueMode       CompletionMode // how to complete the value after this flag
 	ValueValidateFn string         // validation fn for value (when ValueMode==CompleteModeValidate via Complete=)
@@ -95,8 +101,9 @@ func buildContext(tree *model.Tree, opts Options) (tmplContext, error) {
 	funcName := sanitizeFuncName(programName)
 
 	ctx := tmplContext{
-		ProgramName: programName,
-		FuncName:    funcName,
+		ProgramName:       programName,
+		FuncName:          funcName,
+		UseSemanticGroups: opts.UseSemanticGroups,
 	}
 
 	for _, v := range tree.Validations {
@@ -187,6 +194,7 @@ func buildCommand(cmd *model.Command, parentFuncName string) tmplCommand {
 func buildArg(a *model.Argument) tmplArg {
 	ta := tmplArg{
 		Name:        a.Name,
+		Alternate:   a.Alternate,
 		Description: a.Description,
 	}
 	if a.Validate != "" {
@@ -279,7 +287,8 @@ const completionTemplateText = `#!/usr/bin/env bash
 #   3. Otherwise, setting COMPREPLY to bare names only.
 _shgen_compreply_with_descriptions() {
     local cur="$1"
-    shift
+    local label="$2"
+    shift 2
     local -a items=("$@")
     local -a matched=()
     local item name desc
@@ -291,7 +300,6 @@ _shgen_compreply_with_descriptions() {
     done
 
     if [[ "${#matched[@]}" -eq 0 ]]; then
-        COMPREPLY=()
         return
     fi
 
@@ -303,7 +311,13 @@ _shgen_compreply_with_descriptions() {
             name="${item%%	*}"
             (( ${#name} > maxw )) && maxw=${#name}
         done
-        printf '\n' >&2
+
+        if [[ -n "${label}" ]]; then
+            printf '\n%s\n' "${label}" >&2
+        else
+            printf '\n' >&2
+        fi
+
         for item in "${matched[@]}"; do
             name="${item%%	*}"
             desc="${item#*	}"
@@ -315,19 +329,16 @@ _shgen_compreply_with_descriptions() {
             fi
         done
         
-        # Use a single empty string rather than an empty array so bash does not
-        # fall back to -o default (filename) completion after we have already
-        # printed our own description list.
-        COMPREPLY=("")
+        # Set COMPREPLY to a dummy value so bash doesn't fall back to default
+        # completion. We use += to avoid overwriting results from previous calls.
+        COMPREPLY+=("")
         return
     fi
 
     # Normal TAB: populate COMPREPLY with bare names only.
-    local -a names=()
     for item in "${matched[@]}"; do
-        names+=("${item%%	*}")
+        COMPREPLY+=("${item%%	*}")
     done
-    COMPREPLY=("${names[@]}")
     compopt -o nosort 2>/dev/null || true
 }
 {{- range .Commands }}
@@ -377,7 +388,11 @@ _{{ .FuncName }}_complete() {
         $'{{ .Name }}\t{{ .Description }}'
         {{- end }}
     )
-    _shgen_compreply_with_descriptions "${cur}" "${_items[@]}"
+    {{- if $.UseSemanticGroups }}
+    _shgen_compreply_with_descriptions "${cur}" "Available arguments:" "${_items[@]}"
+    {{- else }}
+    _shgen_compreply_with_descriptions "${cur}" "" "${_items[@]}"
+    {{- end }}
     {{- else }}
     COMPREPLY=()
     {{- end }}
@@ -444,15 +459,40 @@ _{{ .FuncName }}_completions() {
     {{- end }}
 
     # Default: offer commands + root arguments with descriptions.
+    {{- if .UseSemanticGroups }}
+    {{- if hasCmds .Commands }}
+    local -a _cmd_items=(
+    {{- range .Commands }}
+        $'{{ .Name }}\t{{ .Description }}'
+    {{- end }}
+    )
+    _shgen_compreply_with_descriptions "${cur}" "Available commands:" "${_cmd_items[@]}"
+    {{- end }}
+    {{- if hasArgs .RootArgs }}
+    local -a _arg_items=(
+    {{- range .RootArgs }}
+        $'{{ .Name }}\t{{ .Description }}'
+		{{- if .Alternate }}
+				$'{{ .Alternate }}'
+		{{- end}}
+    {{- end }}
+    )
+    _shgen_compreply_with_descriptions "${cur}" "Available arguments:" "${_arg_items[@]}"
+    {{- end }}
+    {{- else }}
     local -a _items=(
     {{- range .Commands }}
         $'{{ .Name }}\t{{ .Description }}'
     {{- end }}
     {{- range .RootArgs }}
         $'{{ .Name }}\t{{ .Description }}'
+        {{- if .Alternate }}
+				$'{{ .Alternate }}'
+				{{- end }}
     {{- end }}
     )
-    _shgen_compreply_with_descriptions "${cur}" "${_items[@]}"
+    _shgen_compreply_with_descriptions "${cur}" "" "${_items[@]}"
+    {{- end }}
 }
 
 complete -o default -F _{{ .FuncName }}_completions {{ .ProgramName }}

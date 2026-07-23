@@ -1,1 +1,1 @@
-. <(go run . -p example-function $(find . -iname example.txt)) ; example-function() { echo; }
+. <(go run . -s -p example-function $(find . -iname example.txt)) ; example-function() { echo; }

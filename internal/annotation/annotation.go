@@ -38,8 +38,9 @@ type Annotation struct {
 	Description string // remainder of text after name
 
 	// Argument-specific
-	Validate string // optional ?validate=[validation]
-	Complete string // optional ?complete=[file|none|<validation-name>]
+	Alternate string // optional ?alternate=[name]
+	Validate  string // optional ?validate=[validation]
+	Complete  string // optional ?complete=[file|none|<validation-name>]
 
 	// Validation-specific
 	ValidationName   string // name for validation block
@@ -54,6 +55,9 @@ var annotationRe = regexp.MustCompile(`@shgen\s+(.+)$`)
 
 // parentRe matches parent=[value] (no spaces in value).
 var parentRe = regexp.MustCompile(`\??parent=(\S+)`)
+
+// alternateRe matches alternate=[value] (no spaces in value).
+var alternateRe = regexp.MustCompile(`\??alternate=(\S+)`)
 
 // validateRe matches validate=[value] (no spaces in value).
 var validateRe = regexp.MustCompile(`\??validate=(\S+)`)
@@ -151,6 +155,8 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 // Properties:
 //   - ?parent=[parent]
 //   - ?validate=[validation]
+//   - ?complete=[value]
+//   - ?alternate=[name]
 //   - ?[name] (The name is optional (a bare argument with no flag).)
 //   - [description]
 func parseArgument(raw string) (Annotation, error) {
@@ -171,6 +177,12 @@ func parseArgument(raw string) (Annotation, error) {
 	// Extract optional ?complete=...
 	if m := completeRe.FindStringSubmatchIndex(raw); m != nil {
 		ann.Complete = raw[m[2]:m[3]]
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
+	// Extract optional ?alternate=...
+	if m := alternateRe.FindStringSubmatchIndex(raw); m != nil {
+		ann.Alternate = raw[m[2]:m[3]]
 		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 	}
 
