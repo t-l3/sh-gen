@@ -39,6 +39,7 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 
 type tmplContext struct {
 	ProgramName       string
+	Description       string
 	FuncName          string
 	RootArgs          []tmplArg
 	Commands          []tmplCommand
@@ -100,8 +101,19 @@ func buildContext(tree *model.Tree, opts Options) (tmplContext, error) {
 
 	funcName := sanitizeFuncName(programName)
 
+	rootMod := tree.Modules[""]
+	namedRoot := tree.Modules[programName]
+
+	var description string
+	if namedRoot != nil {
+		description = namedRoot.Description
+	} else if rootMod != nil {
+		description = rootMod.Description
+	}
+
 	ctx := tmplContext{
 		ProgramName:       programName,
+		Description:       description,
 		FuncName:          funcName,
 		UseSemanticGroups: opts.UseSemanticGroups,
 	}
@@ -114,9 +126,6 @@ func buildContext(tree *model.Tree, opts Options) (tmplContext, error) {
 	}
 	ctx.HasValidations = len(ctx.Validations) > 0
 	ctx.Externals = tree.Externals
-
-	rootMod := tree.Modules[""]
-	namedRoot := tree.Modules[programName]
 
 	for _, arg := range moduleArgs(rootMod) {
 		ctx.RootArgs = append(ctx.RootArgs, arg)
@@ -281,9 +290,9 @@ const completionTemplateText = `#!/usr/bin/env bash
 #
 # It works by:
 #   1. Filtering items by the current word prefix.
-#   2. When only listing (COMP_TYPE=63 '?'), printing formatted descriptions
-#      directly to the terminal and returning an empty COMPREPLY so bash does
-#      not also display the raw names.
+#   2. If the current word is empty or '?', or if the user pressed TAB TAB
+#      (COMP_TYPE=63), printing formatted descriptions directly to stderr and
+#      returning an empty COMPREPLY so bash does not also display the raw names.
 #   3. Otherwise, setting COMPREPLY to bare names only.
 _shgen_compreply_with_descriptions() {
     local cur="$1"
@@ -298,6 +307,42 @@ _shgen_compreply_with_descriptions() {
             matched+=("${item}")
         fi
     done
+
+    if [[ -z "${cur}" || "${cur}" == "?" || "${COMP_TYPE}" -eq 63 ]]; then
+        if [[ "${#matched[@]}" -eq 0 ]]; then
+            return
+        fi
+
+        if [[ -n "${label}" ]]; then
+            printf "%s\n" "${label}" >&2
+        fi
+
+        local -i maxw=0
+        for item in "${matched[@]}"; do
+            name="${item%%	*}"
+            (( ${#name} > maxw )) && maxw=${#name}
+        done
+
+        for item in "${matched[@]}"; do
+            name="${item%%	*}"
+            desc="${item#*	}"
+            [[ "${desc}" == "${name}" ]] && desc=""
+            if [[ -n "${desc}" ]]; then
+                printf "  %-*s  (%s)\n" "${maxw}" "${name}" "${desc}" >&2
+            else
+                printf "  %s\n" "${name}" >&2
+            fi
+        done
+
+        if [[ -z "${cur}" || "${cur}" == "?" ]]; then
+            COMPREPLY=()
+        else
+            # Set COMPREPLY to a dummy value so bash doesn't fall back to default
+            # completion for double-TAB.
+            COMPREPLY+=("")
+        fi
+        return
+    fi
 
     if [[ "${#matched[@]}" -eq 0 ]]; then
         return
@@ -352,15 +397,15 @@ _{{ .FuncName }}_complete() {
     case "${prev}" in
         {{- range .Args }}
         {{- if eq .ValueMode (modeFile) }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             # File completion — let bash default (-o default) handle it.
             COMPREPLY=(); return ;;
         {{- else if eq .ValueMode (modeNone) }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             # No completion for this flag's value.
             COMPREPLY=(); return ;;
         {{- else if eq .ValueMode (modeValidate) }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             local candidates
             candidates=$({{ .ValueValidateFn }} 2>/dev/null)
             COMPREPLY=($(compgen -W "${candidates}" -- "${cur}"))
@@ -374,7 +419,7 @@ _{{ .FuncName }}_complete() {
     # Handle flags that complete their own name via a validation function.
     case "${prev}" in
         {{- range .Args }}{{- if .ValidateFn }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             local candidates
             candidates=$({{ .ValidateFn }} 2>/dev/null)
             COMPREPLY=($(compgen -W "${candidates}" -- "${cur}"))
@@ -382,6 +427,11 @@ _{{ .FuncName }}_complete() {
         {{- end }}{{- end }}
     esac
     {{- end }}
+    if [[ -z "${cur}" || "${cur}" == "?" ]]; then
+        printf "\n%b\n\n" "{{ .Name }}{{ if .Description }}: {{ .Description }}{{ end }}" >&2
+        printf "  %-3s  (%s)\n\n" "[tab]" "Show contextual help" >&2
+    fi
+
     {{- if hasArgs .Args }}
     local -a _items=(
         {{- range .Args }}
@@ -396,6 +446,14 @@ _{{ .FuncName }}_complete() {
     {{- else }}
     COMPREPLY=()
     {{- end }}
+
+    if [[ -z "${cur}" || "${cur}" == "?" ]]; then
+        # Redraw prompt
+        if [[ -t 1 ]]; then
+            bind '"\e[0n": redraw-current-line'
+            printf "\e[5n"
+        fi
+    fi
 }
 {{- end }}
 
@@ -429,13 +487,13 @@ _{{ .FuncName }}_completions() {
     case "${prev}" in
         {{- range .RootArgs }}
         {{- if eq .ValueMode (modeFile) }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             COMPREPLY=(); return ;;
         {{- else if eq .ValueMode (modeNone) }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             COMPREPLY=(); return ;;
         {{- else if eq .ValueMode (modeValidate) }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             local candidates
             candidates=$({{ .ValueValidateFn }} 2>/dev/null)
             COMPREPLY=($(compgen -W "${candidates}" -- "${cur}"))
@@ -449,7 +507,7 @@ _{{ .FuncName }}_completions() {
     # Handle root flags that complete their own name via a validation function.
     case "${prev}" in
         {{- range .RootArgs }}{{- if .ValidateFn }}
-        {{ .Name }})
+        {{ .Name }}{{ if .Alternate }} | {{ .Alternate }}{{ end }})
             local candidates
             candidates=$({{ .ValidateFn }} 2>/dev/null)
             COMPREPLY=($(compgen -W "${candidates}" -- "${cur}"))
@@ -457,6 +515,11 @@ _{{ .FuncName }}_completions() {
         {{- end }}{{- end }}
     esac
     {{- end }}
+
+    if [[ -z "${cur}" || "${cur}" == "?" ]]; then
+        printf "\n%b\n\n" "{{ .ProgramName }}{{ if .Description }}: {{ .Description }}{{ end }}" >&2
+        printf "  %-3s  (%s)\n\n" "[tab]" "Show contextual help" >&2
+    fi
 
     # Default: offer commands + root arguments with descriptions.
     {{- if .UseSemanticGroups }}
@@ -486,13 +549,21 @@ _{{ .FuncName }}_completions() {
     {{- end }}
     {{- range .RootArgs }}
         $'{{ .Name }}\t{{ .Description }}'
-        {{- if .Alternate }}
+		{{- if .Alternate }}
 				$'{{ .Alternate }}'
-				{{- end }}
+		{{- end}}
     {{- end }}
     )
     _shgen_compreply_with_descriptions "${cur}" "" "${_items[@]}"
     {{- end }}
+
+    if [[ -z "${cur}" || "${cur}" == "?" ]]; then
+        # Redraw prompt
+        if [[ -t 1 ]]; then
+            bind '"\e[0n": redraw-current-line'
+            printf "\e[5n"
+        fi
+    fi
 }
 
 complete -o default -F _{{ .FuncName }}_completions {{ .ProgramName }}
