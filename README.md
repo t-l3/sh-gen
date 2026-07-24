@@ -26,6 +26,7 @@ Annotation arguments preceded with a `?` are optional:
 @shgen module    ?parent=[parent]                                      [name]  [description]
 @shgen command   ?parent=[parent]                                      [name]  [description]
 @shgen argument  ?parent=[parent]  ?complete=[mode] ?alternate=[name] ?[name]  [description]
+@shgen wildcard  ?parent=[parent]  complete=[validation] ?masquerade=[command]
 
 @shgen validation  [name]  [script]
 @shgen external            [script]
@@ -84,6 +85,26 @@ Defines a named completion function. The `[script]` is a single shell expression
 @shgen validation namespaces  kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'
 ```
 
+### `wildcard`
+
+Defines catch-all completion behaviour for unknown first-level commands (useful for wrapper CLIs).
+
+- `complete=` is required and must point to a `validation` that returns wildcard candidates.
+- `parent=` should usually target your root module.
+- `masquerade=` is optional; when set, completion is delegated to the registered completion handler for that command once a wildcard candidate is selected.
+
+Example for a kubectl wrapper:
+
+```
+@shgen validation kubectl-passthrough __start_kubectl
+@shgen wildcard parent=my-kubectl-wrapper complete=kubectl-passthrough masquerade=kubectl
+```
+
+This enables:
+
+1. Top-level wildcard command suggestions (e.g. `get`, `describe`, ...)
+2. Full delegated completion after selecting one of those commands (e.g. resources, namespaces, flags)
+
 ### `external`
 
 Injects a raw bash snippet verbatim into the generated completion script. The `[script]` can be any valid bash — a helper function definition, a variable assignment, or any other setup code that validation scripts or completion logic depends on.
@@ -92,7 +113,7 @@ Injects a raw bash snippet verbatim into the generated completion script. The `[
 @shgen external _my_helper() { some_command 2>/dev/null; }
 ```
 
-A common use case is **passthrough completion** — wrapping an existing command while delegating completion for unrecognised subcommands to that command's own completion handler. For example, a `kubectl` wrapper that adds custom subcommands but should still complete all standard `kubectl` commands can use `external` to call into kubectl's built-in completion function:
+A common use case is preparing helper functions consumed by wildcard validations. For example, a `kubectl` wrapper can provide kubectl's native completion entrypoint:
 
 ```
 @shgen external _my_kubectl_passthrough() { \
@@ -102,11 +123,11 @@ A common use case is **passthrough completion** — wrapping an existing command
 }
 ```
 
-Wire the passthrough into a catch-all argument on the root module using a `validation` that calls the function, or reference the external function directly from a `validation` block:
+Then wire passthrough behaviour with `validation` + `wildcard`:
 
 ```
 @shgen validation kubectl-passthrough  _my_kubectl_passthrough
-@shgen argument  parent=my-kubectl-wrapper complete=kubectl-passthrough  Pass-through to kubectl
+@shgen wildcard  parent=my-kubectl-wrapper complete=kubectl-passthrough masquerade=kubectl
 ```
 
 ## Example

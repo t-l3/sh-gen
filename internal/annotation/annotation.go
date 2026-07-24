@@ -26,6 +26,7 @@ const (
 	KindArgument   Kind = "argument"
 	KindValidation Kind = "validation"
 	KindExternal   Kind = "external"
+	KindWildcard   Kind = "wildcard"
 )
 
 // Annotation represents a single parsed @shgen annotation.
@@ -36,6 +37,9 @@ type Annotation struct {
 	Parent      string // optional ?parent=[parent]
 	Name        string // name token (may be empty for argument with no flag name)
 	Description string // remainder of text after name
+
+	// Command-specific
+	CommandComplete string // optional ?complete=[validation]
 
 	// Argument-specific
 	Alternate string // optional ?alternate=[name]
@@ -48,6 +52,10 @@ type Annotation struct {
 
 	// External-specific
 	ExternalScript string // script body for external block
+
+	// Wildcard-specific
+	WildcardComplete   string // validation function name for wildcard completions
+	WildcardMasquerade string // command to masquerade as when calling wildcard completion
 }
 
 // annotationRe matches any end-of-line @shgen ... text (preceded by optional whitespace/comment chars).
@@ -66,6 +74,9 @@ var validateRe = regexp.MustCompile(`\??validate=(\S+)`)
 // Built-in values: "file" (filename completion), "none" (no suggestions).
 // Any other value is treated as a validation function name.
 var completeRe = regexp.MustCompile(`\??complete=(\S+)`)
+
+// masqueradeRe matches masquerade=[value] (no spaces in value).
+var masqueradeRe = regexp.MustCompile(`\??masquerade=(\S+)`)
 
 // Scan reads r line by line and returns all parsed Annotations found.
 // Lines containing @shgen with an unrecognised kind are silently skipped,
@@ -118,6 +129,8 @@ func parse(raw string) (Annotation, error) {
 		return parseValidation(rest)
 	case KindExternal:
 		return parseExternal(rest)
+	case KindWildcard:
+		return parseWildcard(rest)
 	default:
 		return Annotation{}, fmt.Errorf("unknown @shgen kind %q", kind)
 	}
@@ -136,6 +149,14 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 	if m := parentRe.FindStringSubmatchIndex(raw); m != nil {
 		ann.Parent = raw[m[2]:m[3]]
 		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
+	// Commands may optionally declare ?complete=... for dynamic value candidates.
+	if kind == KindCommand {
+		if m := completeRe.FindStringSubmatchIndex(raw); m != nil {
+			ann.CommandComplete = raw[m[2]:m[3]]
+			raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+		}
 	}
 
 	// Remaining: [name] [description]
@@ -224,5 +245,35 @@ func parseValidation(raw string) (Annotation, error) {
 func parseExternal(rest string) (Annotation, error) {
 	ann := Annotation{Kind: KindExternal}
 	ann.ExternalScript = strings.TrimSpace(rest)
+	return ann, nil
+}
+
+// Parse the remainder of the raw wildcard annotation string
+//
+// Properties:
+//   - ?parent=[parent]
+//   - ?complete=[validation]
+//   - ?masquerade=[command]
+func parseWildcard(raw string) (Annotation, error) {
+	ann := Annotation{Kind: KindWildcard}
+
+	// Extract optional ?parent=...
+	if m := parentRe.FindStringSubmatchIndex(raw); m != nil {
+		ann.Parent = raw[m[2]:m[3]]
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
+	// Extract optional ?complete=...
+	if m := completeRe.FindStringSubmatchIndex(raw); m != nil {
+		ann.WildcardComplete = raw[m[2]:m[3]]
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
+	// Extract optional ?masquerade=...
+	if m := masqueradeRe.FindStringSubmatchIndex(raw); m != nil {
+		ann.WildcardMasquerade = raw[m[2]:m[3]]
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
 	return ann, nil
 }

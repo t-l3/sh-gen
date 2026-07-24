@@ -56,6 +56,7 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 			cmd := &Command{
 				Name:        ann.Name,
 				Description: ann.Description,
+				Complete:    ann.CommandComplete,
 			}
 			target.Commands = append(target.Commands, cmd)
 
@@ -104,6 +105,13 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 
 		case annotation.KindExternal:
 			tree.Externals = append(tree.Externals, ann.ExternalScript)
+
+		case annotation.KindWildcard:
+			mod := tree.GetOrCreateModule(ann.Parent)
+			mod.Wildcard = &Wildcard{
+				Complete:   ann.WildcardComplete,
+				Masquerade: ann.WildcardMasquerade,
+			}
 		}
 	}
 

@@ -47,6 +47,12 @@ type tmplContext struct {
 	Externals         []string
 	HasValidations    bool
 	UseSemanticGroups bool
+	Wildcard          *tmplWildcard
+}
+
+type tmplWildcard struct {
+	Complete   string // validation function name
+	Masquerade string // command to masquerade as
 }
 
 // CompletionMode controls how an argument's value is completed.
@@ -73,6 +79,7 @@ type tmplCommand struct {
 	Description string
 	Args        []tmplArg
 	FuncName    string // unique function name for sub-completion
+	CompleteFn  string // optional validation function for positional command completion
 }
 
 type tmplValidation struct {
@@ -166,6 +173,19 @@ func buildContext(tree *model.Tree, opts Options) (tmplContext, error) {
 		}
 	}
 
+	// Check for wildcard on the root module
+	if namedRoot != nil && namedRoot.Wildcard != nil {
+		ctx.Wildcard = &tmplWildcard{
+			Complete:   "_shgen_validate_" + sanitizeFuncName(namedRoot.Wildcard.Complete),
+			Masquerade: namedRoot.Wildcard.Masquerade,
+		}
+	} else if rootMod != nil && rootMod.Wildcard != nil {
+		ctx.Wildcard = &tmplWildcard{
+			Complete:   "_shgen_validate_" + sanitizeFuncName(rootMod.Wildcard.Complete),
+			Masquerade: rootMod.Wildcard.Masquerade,
+		}
+	}
+
 	return ctx, nil
 }
 
@@ -192,6 +212,9 @@ func buildCommand(cmd *model.Command, parentFuncName string) tmplCommand {
 		Name:        cmd.Name,
 		Description: cmd.Description,
 		FuncName:    parentFuncName + "_" + sanitizeFuncName(cmd.Name),
+	}
+	if cmd.Complete != "" {
+		tc.CompleteFn = "_shgen_validate_" + sanitizeFuncName(cmd.Complete)
 	}
 	for _, a := range cmd.Arguments {
 		tc.Args = append(tc.Args, buildArg(a))
@@ -225,8 +248,38 @@ func buildArg(a *model.Argument) tmplArg {
 
 // sanitizeFuncName converts a string into a valid bash function name component.
 func sanitizeFuncName(s string) string {
-	r := strings.NewReplacer("-", "_", ".", "_", "/", "_", " ", "_")
-	return r.Replace(s)
+	if s == "" {
+		return "_"
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+
+	for i, r := range s {
+		isLetter := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		isDigit := r >= '0' && r <= '9'
+		isUnderscore := r == '_'
+
+		if i == 0 {
+			if isLetter || isUnderscore {
+				b.WriteRune(r)
+			} else if isDigit {
+				b.WriteRune('_')
+				b.WriteRune(r)
+			} else {
+				b.WriteRune('_')
+			}
+			continue
+		}
+
+		if isLetter || isDigit || isUnderscore {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +311,9 @@ var funcMap = template.FuncMap{
 			}
 		}
 		return false
+	},
+	"hasWildcard": func(w *tmplWildcard) bool {
+		return w != nil && w.Complete != ""
 	},
 	"modeFile":     func() CompletionMode { return CompleteModeFile },
 	"modeNone":     func() CompletionMode { return CompleteModeNone },
@@ -386,6 +442,32 @@ _shgen_compreply_with_descriptions() {
     done
     compopt -o nosort 2>/dev/null || true
 }
+
+_shgen_prepare_masquerade_completion() {
+    local cmd="$1"
+    [[ -z "${cmd}" ]] && return 0
+
+    local safe_cmd="${cmd//[^a-zA-Z0-9_]/_}"
+    local start_fn="__start_${safe_cmd}"
+
+    # Already available.
+    if declare -F "${start_fn}" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Some generated completion functions depend on bash-completion helpers.
+    if ! declare -F _get_comp_words_by_ref >/dev/null 2>&1; then
+        if [[ -r /usr/share/bash-completion/bash_completion ]]; then
+            # shellcheck disable=SC1091
+            source /usr/share/bash-completion/bash_completion >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # Best-effort: ask the masqueraded command for bash completion script.
+    if command -v "${cmd}" >/dev/null 2>&1; then
+        source <("${cmd}" completion bash 2>/dev/null) >/dev/null 2>&1 || true
+    fi
+}
 {{- range .Commands }}
 
 _{{ .FuncName }}_complete() {
@@ -427,6 +509,24 @@ _{{ .FuncName }}_complete() {
         {{- end }}{{- end }}
     esac
     {{- end }}
+    {{- if .CompleteFn }}
+
+    # Command-level positional completion (e.g. "secret" names for "k secret").
+    COMPREPLY=()
+    {{ .CompleteFn }} 2>/dev/null
+    if [[ "${#COMPREPLY[@]}" -gt 0 ]]; then
+        return
+    fi
+
+    local _cmd_candidates
+    _cmd_candidates=$({{ .CompleteFn }} 2>/dev/null)
+    if [[ -n "${_cmd_candidates}" ]]; then
+        COMPREPLY=($(compgen -W "${_cmd_candidates}" -- "${cur}"))
+        if [[ "${#COMPREPLY[@]}" -gt 0 ]]; then
+            return
+        fi
+    fi
+    {{- end }}
     if [[ -z "${cur}" || "${cur}" == "?" ]]; then
         printf "\n%b\n\n" "{{ .Name }}{{ if .Description }}: {{ .Description }}{{ end }}" >&2
         printf "  %-3s  (%s)\n\n" "[tab]" "Show contextual help" >&2
@@ -460,6 +560,9 @@ _{{ .FuncName }}_complete() {
 _{{ .FuncName }}_completions() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    local -a _shgen_deferred_passthrough_items=()
+    local _shgen_deferred_passthrough_text=""
+    local _shgen_defer_passthrough="false"
     {{- if hasCmds .Commands }}
 
     # Detect if we are already inside a sub-command and delegate completion.
@@ -479,6 +582,104 @@ _{{ .FuncName }}_completions() {
             {{ .Name }}) _{{ .FuncName }}_complete; return ;;
             {{- end }}
         esac
+    fi
+    {{- end }}
+    {{- if hasWildcard .Wildcard }}
+
+    # Wildcard candidates come from the configured validation function.
+    local _wildcard_candidates
+    {{- if .Wildcard.Masquerade }}
+    _shgen_prepare_masquerade_completion "{{ .Wildcard.Masquerade }}"
+    local _saved_argv0="${COMP_WORDS[0]}"
+    COMP_WORDS[0]="{{ .Wildcard.Masquerade }}"
+    _wildcard_candidates=$({{ .Wildcard.Complete }} 2>/dev/null)
+    COMP_WORDS[0]="${_saved_argv0}"
+    {{- else }}
+    _wildcard_candidates=$({{ .Wildcard.Complete }} 2>/dev/null)
+    {{- end }}
+
+    # Catch-all delegation for unknown first-level commands.
+    # Known commands are handled by generated sub-command handlers above.
+    if [[ $COMP_CWORD -ge 1 ]]; then
+        local _first_arg="${COMP_WORDS[1]}"
+        local _known_cmd=false
+        case "${_first_arg}" in
+            {{- range .Commands }}
+            {{ .Name }}) _known_cmd=true ;;
+            {{- end }}
+        esac
+
+        if [[ "${_known_cmd}" == "false" && -n "${_first_arg}" && "${_first_arg}" != -* ]]; then
+            COMPREPLY=()
+            local _wild_stdout_file=""
+            local _wild_stderr_file=""
+            local _wild_stdout_text=""
+            local _wild_stderr_text=""
+            if [[ "${COMP_TYPE}" -eq 63 || -z "${cur}" || "${cur}" == "?" ]]; then
+                _wild_stdout_file="/tmp/shgen-wild-${$}-${RANDOM}.out"
+                _wild_stderr_file="/tmp/shgen-wild-${$}-${RANDOM}.err"
+            fi
+            {{- if .Wildcard.Masquerade }}
+            local _saved_argv0="${COMP_WORDS[0]}"
+            COMP_WORDS[0]="{{ .Wildcard.Masquerade }}"
+            if [[ -n "${_wild_stdout_file}" ]]; then
+                _shgen_prepare_masquerade_completion "{{ .Wildcard.Masquerade }}"
+                {{ .Wildcard.Complete }} >"${_wild_stdout_file}" 2>"${_wild_stderr_file}"
+            else
+                _shgen_prepare_masquerade_completion "{{ .Wildcard.Masquerade }}"
+                {{ .Wildcard.Complete }} 2>/dev/null
+            fi
+            COMP_WORDS[0]="${_saved_argv0}"
+            {{- else }}
+            if [[ -n "${_wild_stdout_file}" ]]; then
+                {{ .Wildcard.Complete }} >"${_wild_stdout_file}" 2>"${_wild_stderr_file}"
+            else
+                {{ .Wildcard.Complete }} 2>/dev/null
+            fi
+            {{- end }}
+
+            if [[ -n "${_wild_stdout_file}" && -s "${_wild_stdout_file}" ]]; then
+                _wild_stdout_text="$(cat "${_wild_stdout_file}")"
+            fi
+            if [[ -n "${_wild_stderr_file}" && -s "${_wild_stderr_file}" ]]; then
+                _wild_stderr_text="$(cat "${_wild_stderr_file}")"
+            fi
+            [[ -n "${_wild_stdout_file}" ]] && rm -f "${_wild_stdout_file}" 2>/dev/null || true
+            [[ -n "${_wild_stderr_file}" ]] && rm -f "${_wild_stderr_file}" 2>/dev/null || true
+
+            if [[ "${#COMPREPLY[@]}" -gt 0 ]]; then
+                if [[ $COMP_CWORD -gt 1 && ( "${COMP_TYPE}" -eq 63 || -z "${cur}" || "${cur}" == "?" ) ]]; then
+                    local _defer_w
+                    for _defer_w in "${COMPREPLY[@]}"; do
+                        _shgen_deferred_passthrough_items+=("${_defer_w}")
+                    done
+                    _shgen_defer_passthrough="true"
+                    COMPREPLY=()
+                else
+                    return
+                fi
+            fi
+            if [[ -n "${_wild_stdout_text}" || -n "${_wild_stderr_text}" ]]; then
+                if [[ $COMP_CWORD -gt 1 && ( "${COMP_TYPE}" -eq 63 || -z "${cur}" || "${cur}" == "?" ) ]]; then
+                    if [[ -n "${_wild_stdout_text}" ]]; then
+                        _shgen_deferred_passthrough_text+="${_wild_stdout_text}"$'\n'
+                    fi
+                    if [[ -n "${_wild_stderr_text}" ]]; then
+                        _shgen_deferred_passthrough_text+="${_wild_stderr_text}"$'\n'
+                    fi
+                    _shgen_defer_passthrough="true"
+                    COMPREPLY=()
+                else
+                    printf "Passthrough completion:\n" >&2
+                    if [[ -n "${_wild_stdout_text}" ]]; then
+                        printf "%s\n" "${_wild_stdout_text}" >&2
+                    fi
+                    printf "%s\n" "${_wild_stderr_text}" >&2
+                    COMPREPLY+=("")
+                    return
+                fi
+            fi
+        fi
     fi
     {{- end }}
     {{- if hasValueCompletion .RootArgs }}
@@ -555,6 +756,80 @@ _{{ .FuncName }}_completions() {
     {{- end }}
     )
     _shgen_compreply_with_descriptions "${cur}" "" "${_items[@]}"
+    {{- end }}
+    {{- if hasWildcard .Wildcard }}
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        # Merge wildcard function-style completions with wrapper-level completions.
+        local -a _base_reply=("${COMPREPLY[@]}")
+        COMPREPLY=()
+        local _wild_stdout_file=""
+        local _wild_stderr_file=""
+        local _wild_stdout_text=""
+        local _wild_stderr_text=""
+        if [[ "${COMP_TYPE}" -eq 63 || -z "${cur}" || "${cur}" == "?" ]]; then
+            _wild_stdout_file="/tmp/shgen-wild-${$}-${RANDOM}.out"
+            _wild_stderr_file="/tmp/shgen-wild-${$}-${RANDOM}.err"
+        fi
+        {{- if .Wildcard.Masquerade }}
+        _shgen_prepare_masquerade_completion "{{ .Wildcard.Masquerade }}"
+        local _saved_argv0="${COMP_WORDS[0]}"
+        COMP_WORDS[0]="{{ .Wildcard.Masquerade }}"
+        if [[ -n "${_wild_stdout_file}" ]]; then
+            {{ .Wildcard.Complete }} >"${_wild_stdout_file}" 2>"${_wild_stderr_file}"
+        else
+            {{ .Wildcard.Complete }} 2>/dev/null
+        fi
+        COMP_WORDS[0]="${_saved_argv0}"
+        {{- else }}
+        if [[ -n "${_wild_stdout_file}" ]]; then
+            {{ .Wildcard.Complete }} >"${_wild_stdout_file}" 2>"${_wild_stderr_file}"
+        else
+            {{ .Wildcard.Complete }} 2>/dev/null
+        fi
+        {{- end }}
+
+        if [[ -n "${_wild_stdout_file}" && -s "${_wild_stdout_file}" ]]; then
+            _wild_stdout_text="$(cat "${_wild_stdout_file}")"
+        fi
+        if [[ -n "${_wild_stderr_file}" && -s "${_wild_stderr_file}" ]]; then
+            _wild_stderr_text="$(cat "${_wild_stderr_file}")"
+        fi
+        [[ -n "${_wild_stdout_file}" ]] && rm -f "${_wild_stdout_file}" 2>/dev/null || true
+        [[ -n "${_wild_stderr_file}" ]] && rm -f "${_wild_stderr_file}" 2>/dev/null || true
+
+        local -a _wild_reply=("${COMPREPLY[@]}")
+
+        COMPREPLY=("${_base_reply[@]}" "${_wild_reply[@]}")
+
+        # Also include wildcard candidates produced as plain stdout values.
+        local -a _wild_items=()
+        local _w
+        for _w in ${_wildcard_candidates}; do
+            _wild_items+=("${_w}")
+        done
+        for _w in "${_wild_reply[@]}"; do
+            _wild_items+=("${_w}")
+        done
+        _shgen_compreply_with_descriptions "${cur}" "Passthrough completion:" "${_wild_items[@]}"
+        if [[ "${#_wild_items[@]}" -eq 0 && ( -n "${_wild_stdout_text}" || -n "${_wild_stderr_text}" ) ]]; then
+            printf "Passthrough completion:\n" >&2
+            if [[ -n "${_wild_stdout_text}" ]]; then
+                printf "%s\n" "${_wild_stdout_text}" >&2
+            fi
+            printf "%s\n" "${_wild_stderr_text}" >&2
+            COMPREPLY+=("")
+        fi
+    fi
+
+    if [[ "${_shgen_defer_passthrough}" == "true" ]]; then
+        if [[ "${#_shgen_deferred_passthrough_items[@]}" -gt 0 ]]; then
+            _shgen_compreply_with_descriptions "${cur}" "Passthrough completion:" "${_shgen_deferred_passthrough_items[@]}"
+        elif [[ -n "${_shgen_deferred_passthrough_text}" ]]; then
+            printf "Passthrough completion:\n" >&2
+            printf "%s" "${_shgen_deferred_passthrough_text}" >&2
+            COMPREPLY+=("")
+        fi
+    fi
     {{- end }}
 
     if [[ -z "${cur}" || "${cur}" == "?" ]]; then

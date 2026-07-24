@@ -22,7 +22,9 @@ type Argument struct {
 type Command struct {
 	Name        string
 	Description string
-	Arguments   []*Argument
+	// Complete is an optional validation name used to complete command positional values.
+	Complete  string
+	Arguments []*Argument
 }
 
 // Module represents a grouping of commands and arguments, forming a node in
@@ -34,6 +36,14 @@ type Module struct {
 	Commands    []*Command
 	Arguments   []*Argument
 	SubModules  []*Module
+	// Wildcard provides dynamic completions for unknown subcommands (e.g., kubectl passthrough).
+	Wildcard *Wildcard
+}
+
+// Wildcard represents a catch-all completion source for unknown subcommands.
+type Wildcard struct {
+	Complete   string // Validation function name to call for completions
+	Masquerade string // Command to masquerade as (e.g., "kubectl" for passthrough)
 }
 
 // Validation holds a named validation script used to provide dynamic completions.
