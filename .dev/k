@@ -1,13 +1,32 @@
 #!/usr/bin/bash
 
-@shgen module k A shorthand kubectl wrapper to provide additional functionality for users
+# @shgen module k A shorthand kubectl wrapper to provide additional functionality for users
 
 k() {
   while [[ "$1" ]]; do
-    case "$1"
-      # @shgen validation kube-secrets bash -c 'kubectl get secrets -o name | sed 1d'
-      # @shgen command complete=kube-secrets secret Print the string value for each key in a given secret or for the provided key
+    case "$1" in
+      # @shgen validation kube-secrets                                                        bash -c 'kubectl get secrets -o name | sed 1d'
+      # @shgen validation kube-secrets-fake                                                   bash -c 'echo -e "exampleSecret\nmySecret\ntestSecret"'
+      # @shgen validation kube-secret-keys                                                    bash -c 'kubectl get secrets -o json | jq -r ".items[].data | keys[]"'
+      # @shgen validation kube-secret-keys-fake                                               bash -c 'echo -e "key1\npublic.crt\nprivate.key"; exit 0;'
+      # @shgen command                  complete=kube-secrets-fake                    secret  Print the string value for each key in a given secret or for the provided key
+      # @shgen argument  parent=secret  complete=kube-secret-keys-fake  alternate=-k  --key   Specific key from the given secret
       secret)
+        shift
+        # logic
+        echo "Secret is $1"
+        shift
+        if [[ "$1" == "-k" || "$1" == "--key" ]]; then
+          shift
+          if [[ "$1" ]]; then
+            echo "Key is $1"
+            shift
+          fi
+        fi
+        return 0
+        ;;
+      # @shgen command all Print all resources
+      all)
         # logic
         return 0
         ;;

@@ -7,13 +7,15 @@
 ```
 sh-gen [flags] <file> [file...]
 
-Flags:
-  -o, --output <file>
-              Write output to <file> instead of stdout
-  -p, --process <name>
-              Override the program name in the generated completion script
-  -s, --semantic-groups
-              When enabled, prefixes command and argument groups with "Available commands:" or "Available arguments:"
+Usage:
+
+  [tab] Show contextual help
+
+Available arguments:
+      --output, -o      (Write completion output to a file instead of stdout)
+     --process, -p      (Override the program name used in the generated completion script)
+     --grouped, -g      (Group completion output into completion types)
+      --silent, -s      (Suppress top-level legend output to stderr)
 ```
 
 Annotations can appear in any file — shell scripts, Go source, Python, plain text — anywhere a line contains `@shgen`. Lines that don't contain a recognised annotation are silently ignored.
@@ -143,7 +145,7 @@ Then wire passthrough behaviour with `validation` + `wildcard`:
 # @shgen argument parent=deploy  complete=none   --dry-run Print plan without deploying
 ```
 
-Generate and source the completion script:
+Generate and source the completion script (the root legend is printed to `stderr` by default, so `stdout` remains script-only and can be redirected/sourced safely):
 
 ```bash
 sh-gen -p my-tool -o my-tool-completion.bash my-tool.sh
