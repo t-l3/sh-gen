@@ -152,6 +152,7 @@ func printTopLevelLegend(dst *os.File, script string) error {
 	}
 
 	legendCommand := fmt.Sprintf(`_get_comp_words_by_ref() {
+	. $HOME/.bashrc &> /dev/null
 	local OPTIND opt no
 	while getopts "n:" opt; do
 		case "$opt" in
@@ -187,7 +188,7 @@ COMPREPLY=()
 %s`, tmpPath, program+" ", program, completionFunc)
 
 	cmd := exec.Command("bash", "-lc", legendCommand)
-	legendOutput, err := cmd.CombinedOutput()
+	legendOutput, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("executing generated completion function: %w: %s", err, strings.TrimSpace(string(legendOutput)))
 	}

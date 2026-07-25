@@ -2,27 +2,127 @@
 
 # @shgen module k A shorthand kubectl wrapper to provide additional functionality for users
 
+# Generated output straight from sh-gen on fd 2/stderr
+_k_help_message() {
+  cat <<EOF
+k - A shorthand kubectl wrapper to provide additional functionality for users
+
+  [tab] Show contextual help
+
+Available commands:
+           secret       (Print the string value for each key in a given secret or for the provided key)
+              all       (Print all resources)
+
+Additional completion:
+annotate
+api-resources
+api-versions
+apply
+attach
+auth
+autoscale
+certificate
+cluster-info
+completion
+config
+cordon
+cp
+create
+debug
+delete
+describe
+diff
+drain
+edit
+events
+exec
+explain
+expose
+get
+help
+kuberc
+kustomize
+label
+logs
+options
+patch
+plugin
+port-forward
+proxy
+replace
+rollout
+run
+scale
+set
+taint
+top
+uncordon
+version
+wait
+EOF
+return 0;
+}
+
 k() {
+  if [[ ! "$1" ]]; then
+    _k_help_message;
+    return 0
+  fi
+
   while [[ "$1" ]]; do
     case "$1" in
-      # @shgen validation kube-secrets                                                        bash -c 'kubectl get secrets -o name | sed 1d'
-      # @shgen validation kube-secrets-fake                                                   bash -c 'echo -e "exampleSecret\nmySecret\ntestSecret"'
+      # @shgen validation kube-secrets                                                        bash -c 'kubectl get secrets -o custom-columns=NAME:.metadata.name --no-headers'
+      # @shgen validation kube-secrets-static                                                 bash -c 'echo -e "exampleSecret\nmySecret\ntestSecret"'
       # @shgen validation kube-secret-keys                                                    bash -c 'kubectl get secrets -o json | jq -r ".items[].data | keys[]"'
-      # @shgen validation kube-secret-keys-fake                                               bash -c 'echo -e "key1\npublic.crt\nprivate.key"; exit 0;'
-      # @shgen command                  complete=kube-secrets-fake                    secret  Print the string value for each key in a given secret or for the provided key
-      # @shgen argument  parent=secret  complete=kube-secret-keys-fake  alternate=-k  --key   Specific key from the given secret
+      # @shgen validation kube-secret-ns                                                      bash -c 'kubectl get namespaces -o custom-columns=NAME:.metadata.name --no-headers'
+      # @shgen validation kube-secret-keys-static                                             bash -c 'echo -e "key1\npublic.crt\nprivate.key"; exit 0;'
+      # @shgen command                  complete=kube-secrets                    secret       Print the string value for each key in a given secret or for the provided key
+      # @shgen argument  parent=secret  complete=kube-secret-keys  alternate=-k  --key        Specific key from the given secret
+      # @shgen argument  parent=secret  complete=kube-secret-ns    alternate=-n  --namespace  Namespace containing the secret resource
       secret)
         shift
-        # logic
-        echo "Secret is $1"
-        shift
-        if [[ "$1" == "-k" || "$1" == "--key" ]]; then
-          shift
-          if [[ "$1" ]]; then
-            echo "Key is $1"
-            shift
-          fi
+        local _K_WRAPPER_SECRET_NAME _K_WRAPPER_SECRET_KEY _K_WRAPPER_SECRET_NAMESPACE=()
+        while [[ "$1" ]]; do
+          case "$1" in
+            -n|--namespace)
+              shift
+              if [[ "$1" ]]; then
+                _K_WRAPPER_SECRET_NAMESPACE=("-n" "$1")
+                shift
+              else
+                echo "No namespace provided" >&2
+                return 1;
+              fi
+              continue
+              ;;
+            -k|--key)
+              shift
+              if [[ "$1" ]]; then
+                _K_WRAPPER_SECRET_KEY="| .[\"$1\"]"
+                shift
+                continue
+              else
+                echo "No key provided" >&2
+                return 1;
+              fi
+              continue
+              ;;
+            *)
+              _K_WRAPPER_SECRET_NAME="$1"
+              shift
+              continue
+              ;;
+          esac
+        done
+
+        if [[ ! "$_K_WRAPPER_SECRET_NAME" ]]; then
+          echo "No secret name specified" >&2
         fi
+        
+
+        "$(type -p kubectl || "kubectl")" get secret "${_K_WRAPPER_SECRET_NAMESPACE[@]}" "$_K_WRAPPER_SECRET_NAME" -o json \
+          | jq -r '.data[] |= @base64d | .data'"$_K_WRAPPER_SECRET_KEY"
+
         return 0
         ;;
       # @shgen command all Print all resources
@@ -43,4 +143,6 @@ k() {
 
 if [[ "$1" ]]; then
   k "$@"
+else
+  _k_help_message
 fi

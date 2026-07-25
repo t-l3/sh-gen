@@ -12,10 +12,10 @@ Usage:
   [tab] Show contextual help
 
 Available arguments:
-      --output, -o      (Write completion output to a file instead of stdout)
-     --process, -p      (Override the program name used in the generated completion script)
-     --grouped, -g      (Group completion output into completion types)
-      --silent, -s      (Suppress top-level legend output to stderr)
+   --output, -o (Write completion output to a file instead of stdout)
+  --process, -p (Override the program name used in the generated completion script)
+  --grouped, -g (Group completion output into completion types)
+   --silent, -s (Suppress top-level legend output to stderr)
 ```
 
 Annotations can appear in any file — shell scripts, Go source, Python, plain text — anywhere a line contains `@shgen`. Lines that don't contain a recognised annotation are silently ignored.
@@ -154,3 +154,5 @@ my-tool # <TAB><TAB>
 ```
 
 See [`example.txt`](.dev/example.txt) for a comprehensive multi-command annotation file modelling a fictional `sh-gen-test` CLI, suitable for manual testing of completion behaviour.
+
+See [my example kubectl wrapper - `k`](.dev/k) for an example of a wrapper script with it's own bash completion, in addition to handling the wrapped applications completion too

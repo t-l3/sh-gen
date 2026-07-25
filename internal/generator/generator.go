@@ -30,7 +30,7 @@ const bashTemplate = `
 {{ end }}
 
  _{{ .FuncName }}_completion() {
-    local cur prev words cword max_opt_width="14"
+    local cur prev words cword max_opt_width="{{ .MaxOptWidth }}"
     local __shgen_printed=0
 
     # Preserve original word breaks for delegated completions (e.g. kubectl).
@@ -190,12 +190,11 @@ const bashTemplate = `
                     printf "\n"
                     __shgen_printed=1
                 fi
-                printf "%${max_opt_width}s%4s\t%s\n" "{{ .Name }}" "{{ if .Alternate }}, {{ .Alternate }}{{ end}}" "({{ .Description }})"
+                printf "%${max_opt_width}s\t%s\n" "{{ .Name }}{{ if .Alternate }}, {{ .Alternate }}{{ end}}" "({{ .Description }})"
             fi
             {{- end }}
             {{- end }}
             {{- if .Wildcard }}
-            {{ if $.UseSemanticGroups }}if [[ "$cur" == "" ]]; then echo -e "\nAdditional completion:"; fi{{ end }}
             # Wildcard completion
             local __shgen_pre_wildcard_count=${#COMPREPLY[@]}
 
@@ -235,6 +234,75 @@ const bashTemplate = `
                     COMP_CWORD=$_shgen_orig_cword
 
                     if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
+                        local __shgen_wc_has_values=0
+                        for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+                            if [[ -n "${COMPREPLY[i]}" ]]; then
+                                __shgen_wc_has_values=1
+                                break
+                            fi
+                        done
+                        if [[ $__shgen_wc_has_values -eq 1 ]]; then
+                            {{ if $.UseSemanticGroups }}
+                            if [[ "$cur" == "" ]]; then
+                                echo -e "\nAdditional completion:"
+                                __shgen_printed=1
+                            fi
+                            {{ end }}
+                            if [[ $__shgen_printed -eq 0 ]]; then
+                                printf "\n"
+                            fi
+                            __shgen_printed=1
+                            local __shgen_wc_printed=0
+                            # Print command/value suggestions first.
+                            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+                                local __shgen_wc_item="${COMPREPLY[i]}"
+                                if [[ "$__shgen_wc_item" != -* && "$__shgen_wc_item" != \\-* && -n "$__shgen_wc_item" ]]; then
+                                    printf "%s\n" "$__shgen_wc_item"
+                                    __shgen_wc_printed=1
+                                fi
+                            done
+                            # Print option suggestions (leading - / --) after commands.
+                            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+                                local __shgen_wc_item="${COMPREPLY[i]}"
+                                if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
+                                    printf "%s\n" "$__shgen_wc_item"
+                                    __shgen_wc_printed=1
+                                fi
+                            done
+                            # Fallback: if items exist but nothing matched the grouping filters, print raw.
+                            if [[ $__shgen_wc_printed -eq 0 ]]; then
+                                for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+                                    local __shgen_wc_item="${COMPREPLY[i]}"
+                                    if [[ -n "$__shgen_wc_item" ]]; then
+                                        printf "%s\n" "$__shgen_wc_item"
+                                    fi
+                                done
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+
+            # Fallback to wildcard validator only when masquerade yielded nothing.
+            if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count ]]; then
+                # Restore default word-break behaviour before delegating externally.
+                COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
+                {{ .Wildcard.Complete }}
+                if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
+                    local __shgen_wc_has_values=0
+                    for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+                        if [[ -n "${COMPREPLY[i]}" ]]; then
+                            __shgen_wc_has_values=1
+                            break
+                        fi
+                    done
+                    if [[ $__shgen_wc_has_values -eq 1 ]]; then
+                        {{ if $.UseSemanticGroups }}
+                        if [[ "$cur" == "" ]]; then
+                            echo -e "\nAdditional completion:"
+                            __shgen_printed=1
+                        fi
+                        {{ end }}
                         if [[ $__shgen_printed -eq 0 ]]; then
                             printf "\n"
                         fi
@@ -265,45 +333,6 @@ const bashTemplate = `
                                 fi
                             done
                         fi
-                    fi
-                fi
-            fi
-
-            # Fallback to wildcard validator only when masquerade yielded nothing.
-            if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count ]]; then
-                # Restore default word-break behaviour before delegating externally.
-                COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
-                {{ .Wildcard.Complete }}
-                if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
-                    if [[ $__shgen_printed -eq 0 ]]; then
-                        printf "\n"
-                    fi
-                    __shgen_printed=1
-                    local __shgen_wc_printed=0
-                    # Print command/value suggestions first.
-                    for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                        local __shgen_wc_item="${COMPREPLY[i]}"
-                        if [[ "$__shgen_wc_item" != -* && "$__shgen_wc_item" != \\-* && -n "$__shgen_wc_item" ]]; then
-                            printf "%s\n" "$__shgen_wc_item"
-                            __shgen_wc_printed=1
-                        fi
-                    done
-                    # Print option suggestions (leading - / --) after commands.
-                    for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                        local __shgen_wc_item="${COMPREPLY[i]}"
-                        if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
-                            printf "%s\n" "$__shgen_wc_item"
-                            __shgen_wc_printed=1
-                        fi
-                    done
-                    # Fallback: if items exist but nothing matched the grouping filters, print raw.
-                    if [[ $__shgen_wc_printed -eq 0 ]]; then
-                        for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                            local __shgen_wc_item="${COMPREPLY[i]}"
-                            if [[ -n "$__shgen_wc_item" ]]; then
-                                printf "%s\n" "$__shgen_wc_item"
-                            fi
-                        done
                     fi
                 fi
             fi
@@ -349,6 +378,7 @@ type templateData struct {
 	ProgramName       string
 	FuncName          string
 	UseSemanticGroups bool
+	MaxOptWidth       int
 	Nodes             []node
 	KnownPaths        []string
 	Externals         []string
@@ -463,6 +493,8 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 		},
 	}
 
+	data.MaxOptWidth = calculateMaxOptWidth(data.Nodes)
+
 	tmpl, err := template.New("bash").Funcs(funcMap).Parse(strings.TrimSpace(bashTemplate))
 	if err != nil {
 		return err
@@ -503,6 +535,36 @@ func collectNodes(parentPath string, m *model.Module) []node {
 	}
 
 	return nodes
+}
+
+func calculateMaxOptWidth(nodes []node) int {
+	maxWidth := 1
+	for _, n := range nodes {
+		for _, sm := range n.SubModules {
+			if l := len(sm.Name); l > maxWidth {
+				maxWidth = l
+			}
+		}
+		for _, cmd := range n.Commands {
+			if l := len(cmd.Name); l > maxWidth {
+				maxWidth = l
+			}
+		}
+		for _, arg := range n.Arguments {
+			label := arg.Name
+			if strings.TrimSpace(arg.Alternate) != "" {
+				label = label + ", " + arg.Alternate
+			}
+			if l := len(label); l > maxWidth {
+				maxWidth = l
+			}
+		}
+	}
+
+	// Add small indent
+	maxWidth += 2
+
+	return maxWidth
 }
 
 func sanitizeFuncName(s string) string {

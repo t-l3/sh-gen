@@ -9,7 +9,14 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/main.go"
+      "program": "${workspaceFolder}/main.go",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "-g",
+        "-p",
+        "sh-gen",
+        "main.go"
+      ]
     }
   ]
 }

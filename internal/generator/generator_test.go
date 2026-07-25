@@ -56,7 +56,7 @@ func TestGenerate_WildcardMasquerade_PrintsCommandsAndFlagsWithFlagsAfterCommand
     eval "$_cword_ref=\$COMP_CWORD"
 }`,
 		`_k_kubectl_passthrough() {
-    COMPREPLY+=("__fallback__")
+    :
 }`,
 		`__start_kubectl() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
@@ -142,6 +142,155 @@ printf '%s\n' "${COMPREPLY[@]}"
 	}
 	if !strings.Contains(completions, "--audience") || !strings.Contains(completions, "-n") {
 		t.Fatalf("expected COMPREPLY to include wildcard flag matches; got:\n%s", completions)
+	}
+}
+
+func TestGenerate_WildcardPassthrough_NoOutputWhenNoFurtherCompletions(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Description = "kubectl wrapper"
+	root.Wildcard = &model.Wildcard{
+		Complete:   "kubectl-passthrough",
+		Masquerade: "kubectl",
+	}
+
+	tree.Validations["kubectl-passthrough"] = &model.Validation{
+		Name:   "kubectl-passthrough",
+		Script: "_k_kubectl_passthrough",
+	}
+
+	tree.Externals = []string{
+		`_get_comp_words_by_ref() {
+    local OPTIND opt no
+    while getopts "n:" opt; do
+        case "$opt" in
+            n) no="$OPTARG" ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    local _cur_ref=$1
+    local _prev_ref=$2
+    local _words_ref=$3
+    local _cword_ref=$4
+
+    local _cur _prev
+    _cur="${COMP_WORDS[COMP_CWORD]}"
+    if (( COMP_CWORD > 0 )); then
+        _prev="${COMP_WORDS[COMP_CWORD-1]}"
+    else
+        _prev=""
+    fi
+
+    eval "$_cur_ref=\"\$_cur\""
+    eval "$_prev_ref=\"\$_prev\""
+    eval "$_words_ref=(\"\${COMP_WORDS[@]}\")"
+    eval "$_cword_ref=\$COMP_CWORD"
+}`,
+		`_k_kubectl_passthrough() {
+    :
+}`,
+		`__start_kubectl() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local prev=""
+    if (( COMP_CWORD > 0 )); then
+        prev="${COMP_WORDS[COMP_CWORD-1]}"
+    fi
+    COMPREPLY=()
+    if [[ -z "$cur" && "$prev" == "secrets" ]]; then
+        COMPREPLY+=("bootstrap-token-abcdef")
+    fi
+}
+complete -F __start_kubectl kubectl`,
+	}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{
+		ProgramName:       "k",
+		UseSemanticGroups: true,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-lc", `
+source "`+scriptPath+`"
+COMP_LINE="k get secrets bootstrap-token-abcdef "
+COMP_POINT=${#COMP_LINE}
+COMP_WORDS=(k get secrets bootstrap-token-abcdef "")
+COMP_CWORD=4
+COMPREPLY=()
+_k_completion
+echo "__PRINT_END__"
+printf '%s\n' "${COMPREPLY[@]}"
+`)
+	raw, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("running generated completion: %v\noutput:\n%s", err, string(raw))
+	}
+
+	output := string(raw)
+	parts := strings.SplitN(output, "__PRINT_END__", 2)
+	if len(parts) != 2 {
+		t.Fatalf("missing print sentinel in output:\n%s", output)
+	}
+
+	printed := strings.TrimSpace(parts[0])
+	completions := strings.TrimSpace(parts[1])
+
+	if printed != "" {
+		t.Fatalf("expected no printed output when wildcard has no further completions; got:\n%q", printed)
+	}
+	if completions != "" {
+		t.Fatalf("expected COMPREPLY to be empty when wildcard has no further completions; got:\n%s", completions)
+	}
+}
+
+func TestGenerate_ComputesMaxOptWidthFromLongestDisplayLabel(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.SubModules = []*model.Module{
+		{
+			Name: "cluster-contexts",
+		},
+	}
+	root.Commands = []*model.Command{
+		{
+			Name: "very-long-command-name",
+		},
+		{
+			Name: "get",
+			Arguments: []*model.Argument{
+				{
+					Name:      "--output-format",
+					Alternate: "-o",
+				},
+				{
+					Name:      "--namespace-override",
+					Alternate: "-n",
+				},
+			},
+		},
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "k"}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if !strings.Contains(script, `max_opt_width="23"`) {
+		t.Fatalf("expected max_opt_width to match longest label length (23), script did not contain expected value:\n%s", script)
 	}
 }
 
