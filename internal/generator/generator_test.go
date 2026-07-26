@@ -254,6 +254,113 @@ printf '%s\n' "${COMPREPLY[@]}"
 	}
 }
 
+func TestGenerate_WildcardMasquerade_PreservesDirectoryTokenForFileCompletion(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Wildcard = &model.Wildcard{
+		Complete:   "kubectl-passthrough",
+		Masquerade: "kubectl",
+	}
+
+	tree.Validations["kubectl-passthrough"] = &model.Validation{
+		Name:   "kubectl-passthrough",
+		Script: "_k_kubectl_passthrough",
+	}
+
+	tree.Externals = []string{
+		`_get_comp_words_by_ref() {
+    local OPTIND opt no
+    while getopts "n:" opt; do
+        case "$opt" in
+            n) no="$OPTARG" ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    local _cur_ref=$1
+    local _prev_ref=$2
+    local _words_ref=$3
+    local _cword_ref=$4
+
+    local _cur _prev
+    _cur="${COMP_WORDS[COMP_CWORD]}"
+    if (( COMP_CWORD > 0 )); then
+        _prev="${COMP_WORDS[COMP_CWORD-1]}"
+    else
+        _prev=""
+    fi
+
+    eval "$_cur_ref=\"\$_cur\""
+    eval "$_prev_ref=\"\$_prev\""
+    eval "$_words_ref=(\"\${COMP_WORDS[@]}\")"
+    eval "$_cword_ref=\$COMP_CWORD"
+}`,
+		`_k_kubectl_passthrough() {
+    :
+}`,
+		`__start_kubectl() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local token_from_line="${COMP_LINE:0:COMP_POINT}"
+    token_from_line="${token_from_line##* }"
+    COMPREPLY=()
+    if [[ "$cur" == ".dev/" && "$token_from_line" == ".dev/" ]]; then
+        COMPREPLY+=(".dev/data")
+    else
+        COMPREPLY+=("__BAD_CUR__:$cur")
+        COMPREPLY+=("__BAD_LINE_TOKEN__:$token_from_line")
+    fi
+}
+complete -F __start_kubectl kubectl`,
+	}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-lc", `
+source "`+scriptPath+`"
+COMP_LINE="k apply -f .dev/"
+COMP_POINT=${#COMP_LINE}
+COMP_WORDS=(k apply -f .dev/)
+COMP_CWORD=3
+COMPREPLY=()
+_k_completion
+echo "__PRINT_END__"
+printf '%s\n' "${COMPREPLY[@]}"
+`)
+	raw, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("running generated completion: %v\noutput:\n%s", err, string(raw))
+	}
+
+	output := string(raw)
+	parts := strings.SplitN(output, "__PRINT_END__", 2)
+	if len(parts) != 2 {
+		t.Fatalf("missing print sentinel in output:\n%s", output)
+	}
+
+	completions := parts[1]
+	if !strings.Contains(completions, ".dev/data") {
+		t.Fatalf("expected delegated completion to receive .dev/ context; got:\n%s", completions)
+	}
+	if strings.Contains(completions, "__BAD_CUR__") {
+		t.Fatalf("expected delegated completion cur token to remain .dev/, got:\n%s", completions)
+	}
+	if strings.Contains(completions, "__BAD_LINE_TOKEN__") {
+		t.Fatalf("expected delegated completion COMP_LINE token to remain .dev/, got:\n%s", completions)
+	}
+}
+
 func TestGenerate_ComputesMaxOptWidthFromLongestDisplayLabel(t *testing.T) {
 	tree := model.NewTree()
 
@@ -289,8 +396,8 @@ func TestGenerate_ComputesMaxOptWidthFromLongestDisplayLabel(t *testing.T) {
 	}
 
 	script := out.String()
-	if !strings.Contains(script, `max_opt_width="23"`) {
-		t.Fatalf("expected max_opt_width to match longest label length (23), script did not contain expected value:\n%s", script)
+	if !strings.Contains(script, `max_opt_width="26"`) {
+		t.Fatalf("expected max_opt_width to match longest label length (26), script did not contain expected value:\n%s", script)
 	}
 }
 

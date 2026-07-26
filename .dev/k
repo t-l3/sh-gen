@@ -64,6 +64,7 @@ return 0;
 }
 
 k() {
+  local _K_WRAPPER_KUBECTL_BINARY="$(type -p kubectl || "kubectl")"
   if [[ ! "$1" ]]; then
     _k_help_message;
     return 0
@@ -71,6 +72,13 @@ k() {
 
   while [[ "$1" ]]; do
     case "$1" in
+      ns)
+        shift
+        if [[ "$1" ]]; then
+          "$_K_WRAPPER_KUBECTL_BINARY" config set-context --current --namespace "$1"
+          return $?
+        fi
+        ;;
       # @shgen validation kube-secrets                                                        bash -c 'kubectl get secrets -o custom-columns=NAME:.metadata.name --no-headers'
       # @shgen validation kube-secrets-static                                                 bash -c 'echo -e "exampleSecret\nmySecret\ntestSecret"'
       # @shgen validation kube-secret-keys                                                    bash -c 'kubectl get secrets -o json | jq -r ".items[].data | keys[]"'
@@ -120,7 +128,7 @@ k() {
         fi
         
 
-        "$(type -p kubectl || "kubectl")" get secret "${_K_WRAPPER_SECRET_NAMESPACE[@]}" "$_K_WRAPPER_SECRET_NAME" -o json \
+        "$_K_WRAPPER_KUBECTL_BINARY" get secret "${_K_WRAPPER_SECRET_NAMESPACE[@]}" "$_K_WRAPPER_SECRET_NAME" -o json \
           | jq -r '.data[] |= @base64d | .data'"$_K_WRAPPER_SECRET_KEY"
 
         return 0
@@ -134,7 +142,7 @@ k() {
       # @shgen validation kubectl-passthrough _k_kubectl_passthrough
       # @shgen wildcard parent=k complete=kubectl-passthrough masquerade=kubectl
       *)
-        kubectl "$@"
+        "$_K_WRAPPER_KUBECTL_BINARY" "$@"
         return "$?"
         ;;
     esac

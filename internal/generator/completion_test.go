@@ -181,3 +181,33 @@ func TestGenerate_CommandComplete_OverridesWildcard(t *testing.T) {
 		t.Fatalf("expected wildcard completion to be bypassed when command complete is set, got: %#v", replies)
 	}
 }
+
+func TestGenerate_FileCompletion_EnablesFilenameMode(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Commands = []*model.Command{
+		{
+			Name:     "pick",
+			Complete: "file",
+			Arguments: []*model.Argument{
+				{
+					Name:     "--output",
+					Complete: "file",
+				},
+			},
+		},
+	}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if got := strings.Count(script, `compopt -o filenames 2>/dev/null`); got != 2 {
+		t.Fatalf("expected file completion branches to enable filename mode twice, got %d\nscript:\n%s", got, script)
+	}
+}

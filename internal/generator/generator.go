@@ -97,6 +97,7 @@ const bashTemplate = `
                 {{- if and (ne .Name "") (ne $argComplete "") }}
                 "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
                     {{- if eq (completionKind $argComplete) "file" }}
+                    compopt -o filenames 2>/dev/null
                     COMPREPLY=( $(compgen -f -- "$cur") )
                     {{- else if eq (completionKind $argComplete) "none" }}
                     COMPREPLY=()
@@ -114,6 +115,7 @@ const bashTemplate = `
             {{- if ne .CommandComplete "" }}
             if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && "$prev" == "{{ .Name }}" && "$cur" != -* ]]; then
                 {{- if eq (completionKind .CommandComplete) "file" }}
+                compopt -o filenames 2>/dev/null
                 COMPREPLY=( $(compgen -f -- "$cur") )
                 {{- else if eq (completionKind .CommandComplete) "none" }}
                 COMPREPLY=()
@@ -214,14 +216,21 @@ const bashTemplate = `
                     # Save current state
                     local _shgen_orig_words=("${COMP_WORDS[@]}")
                     local _shgen_orig_cword=$COMP_CWORD
+                    local _shgen_orig_line="$COMP_LINE"
+                    local _shgen_orig_point=$COMP_POINT
 
                     # Construct new words: Masquerade command + everything after the matched path
-                    COMP_WORDS=("{{ .Wildcard.Masquerade }}" "${words[@]:$_shgen_matched_path_word_count}")
+                    COMP_WORDS=("{{ .Wildcard.Masquerade }}" "${_shgen_orig_words[@]:$_shgen_matched_path_word_count}")
                     # Preserve an explicit empty token for trailing-space completion.
                     if [[ "$cur" == "" ]]; then
                         COMP_WORDS+=("")
                     fi
-                    COMP_CWORD=$(($cword - $_shgen_matched_path_word_count + 1))
+                    COMP_CWORD=$(($_shgen_orig_cword - $_shgen_matched_path_word_count + 1))
+                    COMP_LINE="${COMP_WORDS[*]}"
+                    if [[ "$cur" == "" ]]; then
+                        COMP_LINE+=" "
+                    fi
+                    COMP_POINT=${#COMP_LINE}
 
                     # Ensure delegated completer gets default word-break behaviour.
                     COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
@@ -232,6 +241,8 @@ const bashTemplate = `
                     # Restore state
                     COMP_WORDS=("${_shgen_orig_words[@]}")
                     COMP_CWORD=$_shgen_orig_cword
+                    COMP_LINE="$_shgen_orig_line"
+                    COMP_POINT=$_shgen_orig_point
 
                     if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
                         local __shgen_wc_has_values=0
@@ -243,7 +254,7 @@ const bashTemplate = `
                         done
                         if [[ $__shgen_wc_has_values -eq 1 ]]; then
                             {{ if $.UseSemanticGroups }}
-                            if [[ "$cur" == "" ]]; then
+                            if [[ "$cur" == "" && $__shgen_suppress_local -eq 0 ]]; then
                                 echo -e "\nAdditional completion:"
                                 __shgen_printed=1
                             fi
