@@ -2,7 +2,7 @@
 // from source and script files.
 //
 // Annotation syntax (each annotation is an end-of-line token beginning with @shgen):
-//   - module   ?parent=[parent]                         [name] [description]
+//   - module   ?parent=[parent] ?complete=[validation]  [name] [description]
 //   - command  ?parent=[parent]                         [name] [description]
 //   - argument ?parent=[parent] ?validate=[validation] ?[name] [description]
 //   - validation [name] [script]
@@ -38,6 +38,9 @@ type Annotation struct {
 	Name        string // name token (may be empty for argument with no flag name)
 	Description string // remainder of text after name
 
+	// Module-specific
+	ModuleComplete string // optional ?complete=[validation]
+
 	// Command-specific
 	CommandComplete string // optional ?complete=[validation]
 
@@ -49,6 +52,7 @@ type Annotation struct {
 	// Validation-specific
 	ValidationName   string // name for validation block
 	ValidationScript string // script body for validation block
+	ValidationNoSpace bool  // optional ?option=nospace
 
 	// External-specific
 	ExternalScript string // script body for external block
@@ -74,6 +78,9 @@ var validateRe = regexp.MustCompile(`\??validate=(\S+)`)
 // Built-in values: "file" (filename completion), "none" (no suggestions).
 // Any other value is treated as a validation function name.
 var completeRe = regexp.MustCompile(`\??complete=(\S+)`)
+
+// optionRe matches option=[value] (no spaces in value).
+var optionRe = regexp.MustCompile(`\??option=(\S+)`)
 
 // masqueradeRe matches masquerade=[value] (no spaces in value).
 var masqueradeRe = regexp.MustCompile(`\??masquerade=(\S+)`)
@@ -140,6 +147,7 @@ func parse(raw string) (Annotation, error) {
 //
 // Properties:
 //   - ?parent=[parent]
+//   - ?complete=[validation]
 //   - [name]
 //   - [description]
 func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
@@ -151,10 +159,14 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 	}
 
-	// Commands may optionally declare ?complete=... for dynamic value candidates.
-	if kind == KindCommand {
+	// Modules and commands may optionally declare ?complete=... for dynamic value candidates.
+	if kind == KindModule || kind == KindCommand {
 		if m := completeRe.FindStringSubmatchIndex(raw); m != nil {
-			ann.CommandComplete = raw[m[2]:m[3]]
+			if kind == KindModule {
+				ann.ModuleComplete = raw[m[2]:m[3]]
+			} else {
+				ann.CommandComplete = raw[m[2]:m[3]]
+			}
 			raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 		}
 	}
@@ -227,6 +239,20 @@ func parseArgument(raw string) (Annotation, error) {
 //   - [script]
 func parseValidation(raw string) (Annotation, error) {
 	ann := Annotation{Kind: KindValidation}
+
+	// Extract optional ?option=... fragments (currently supports: nospace).
+	for {
+		m := optionRe.FindStringSubmatchIndex(raw)
+		if m == nil {
+			break
+		}
+		optVal := strings.ToLower(strings.TrimSpace(raw[m[2]:m[3]]))
+		if optVal == "nospace" {
+			ann.ValidationNoSpace = true
+		}
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
 	fields := strings.SplitN(strings.TrimSpace(raw), " ", 2)
 	if len(fields) == 0 || fields[0] == "" {
 		return Annotation{}, fmt.Errorf("validation annotation requires a name")

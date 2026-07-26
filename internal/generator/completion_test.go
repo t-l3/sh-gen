@@ -182,6 +182,50 @@ func TestGenerate_CommandComplete_OverridesWildcard(t *testing.T) {
 	}
 }
 
+func TestGenerate_ModuleComplete_OverridesWildcard_ForFirstPositionalArg(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Complete = "repos"
+	root.Wildcard = &model.Wildcard{
+		Complete: "wild-values",
+	}
+
+	tree.Validations["repos"] = &model.Validation{
+		Name:   "repos",
+		Script: `echo -e "alpha\nbeta\ngamma"`,
+	}
+	tree.Validations["wild-values"] = &model.Validation{
+		Name:   "wild-values",
+		Script: `echo "__wild__"`,
+	}
+
+	tree.Externals = []string{bashCompWordsHelper()}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	replies := runCompletion(t, scriptPath, "k ", "k \"\"", 1)
+
+	got := strings.Join(replies, ",")
+	if !strings.Contains(got, "alpha") || !strings.Contains(got, "beta") || !strings.Contains(got, "gamma") {
+		t.Fatalf("expected module completion values, got: %#v", replies)
+	}
+	if strings.Contains(got, "__wild__") {
+		t.Fatalf("expected wildcard completion to be bypassed when module complete is set, got: %#v", replies)
+	}
+}
+
 func TestGenerate_FileCompletion_EnablesFilenameMode(t *testing.T) {
 	tree := model.NewTree()
 
@@ -209,5 +253,94 @@ func TestGenerate_FileCompletion_EnablesFilenameMode(t *testing.T) {
 	script := out.String()
 	if got := strings.Count(script, `compopt -o filenames 2>/dev/null`); got != 2 {
 		t.Fatalf("expected file completion branches to enable filename mode twice, got %d\nscript:\n%s", got, script)
+	}
+}
+
+func TestGenerate_ModuleFileCompletion_EnablesFilenameMode(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Complete = "file"
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if got := strings.Count(script, `compopt -o filenames 2>/dev/null`); got != 1 {
+		t.Fatalf("expected one file completion branch for module complete=file, got %d\nscript:\n%s", got, script)
+	}
+}
+
+func TestGenerate_NoSpaceOption_IsAppliedForValidationBackedCompletions(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Complete = "repos"
+	root.Commands = []*model.Command{
+		{
+			Name:     "deploy",
+			Complete: "targets",
+			Arguments: []*model.Argument{
+				{
+					Name:     "--env",
+					Complete: "envs",
+				},
+			},
+		},
+	}
+
+	tree.Validations["repos"] = &model.Validation{Name: "repos", Script: `echo -e "alpha\nbeta"`, NoSpace: true}
+	tree.Validations["targets"] = &model.Validation{Name: "targets", Script: `echo -e "web\napi"`, NoSpace: true}
+	tree.Validations["envs"] = &model.Validation{Name: "envs", Script: `echo -e "dev\nprod"`, NoSpace: true}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if got := strings.Count(script, `compopt -o nospace 2>/dev/null`); got != 3 {
+		t.Fatalf("expected nospace option in module/command/argument branches (3 total), got %d\nscript:\n%s", got, script)
+	}
+}
+
+func TestGenerate_NoSpaceOption_NotAppliedWithoutValidationFlag(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Complete = "repos"
+	root.Commands = []*model.Command{
+		{
+			Name:     "deploy",
+			Complete: "targets",
+			Arguments: []*model.Argument{
+				{
+					Name:     "--env",
+					Complete: "envs",
+				},
+			},
+		},
+	}
+
+	tree.Validations["repos"] = &model.Validation{Name: "repos", Script: `echo -e "alpha\nbeta"`}
+	tree.Validations["targets"] = &model.Validation{Name: "targets", Script: `echo -e "web\napi"`}
+	tree.Validations["envs"] = &model.Validation{Name: "envs", Script: `echo -e "dev\nprod"`}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if got := strings.Count(script, `compopt -o nospace 2>/dev/null`); got != 0 {
+		t.Fatalf("expected nospace option to be absent when validations do not set NoSpace, got %d\nscript:\n%s", got, script)
 	}
 }

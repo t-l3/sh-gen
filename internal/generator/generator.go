@@ -104,6 +104,9 @@ const bashTemplate = `
                     {{- else if eq (completionKind $argComplete) "function" }}
                     local __shgen_values="$({{ completionFunc $argComplete }} 2>/dev/null)"
                     COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+                {{- if completionNoSpace $argComplete }}
+                compopt -o nospace 2>/dev/null
+                {{- end }}
                     {{- end }}
                     return 0
                     ;;
@@ -122,6 +125,29 @@ const bashTemplate = `
                 {{- else if eq (completionKind .CommandComplete) "function" }}
                 local __shgen_values="$({{ completionFunc .CommandComplete }} 2>/dev/null)"
                 COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+                {{- if completionNoSpace .CommandComplete }}
+                compopt -o nospace 2>/dev/null
+                {{- end }}
+                {{- end }}
+                return 0
+            fi
+            {{- end }}
+
+            # Explicit completion override for module first positional value.
+            # Trigger when user is typing the first token after this module path.
+            {{- if ne .ModuleComplete "" }}
+            if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $cword -eq $(({{ pathWordCount $node.Path }} + 1)) && "$cur" != -* ]]; then
+                {{- if eq (completionKind .ModuleComplete) "file" }}
+                compopt -o filenames 2>/dev/null
+                COMPREPLY=( $(compgen -f -- "$cur") )
+                {{- else if eq (completionKind .ModuleComplete) "none" }}
+                COMPREPLY=()
+                {{- else if eq (completionKind .ModuleComplete) "function" }}
+                local __shgen_values="$({{ completionFunc .ModuleComplete }} 2>/dev/null)"
+                COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+                {{- if completionNoSpace .ModuleComplete }}
+                compopt -o nospace 2>/dev/null
+                {{- end }}
                 {{- end }}
                 return 0
             fi
@@ -368,6 +394,7 @@ type node struct {
 	Name            string
 	Path            string
 	Description     string
+	ModuleComplete  string
 	CommandComplete string
 	SubModules      []*model.Module
 	Commands        []*model.Command
@@ -383,6 +410,7 @@ type tmplWildcard struct {
 type tmplValidation struct {
 	FuncName string
 	Script   string
+	NoSpace  bool
 }
 
 type templateData struct {
@@ -422,7 +450,15 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 		data.Validations = append(data.Validations, tmplValidation{
 			FuncName: "_shgen_validate_" + sanitizeFuncName(v.Name),
 			Script:   v.Script,
+			NoSpace:  v.NoSpace,
 		})
+	}
+
+	validationNoSpace := make(map[string]bool, len(tree.Validations))
+	for name, v := range tree.Validations {
+		if v != nil {
+			validationNoSpace[name] = v.NoSpace
+		}
 	}
 
 	// Collect nodes from root modules. We combine Modules[""] and Modules[programName]
@@ -440,6 +476,9 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 				existing.SubModules = append(existing.SubModules, n.SubModules...)
 				existing.Commands = append(existing.Commands, n.Commands...)
 				existing.Arguments = append(existing.Arguments, n.Arguments...)
+				if n.ModuleComplete != "" {
+					existing.ModuleComplete = n.ModuleComplete
+				}
 				if n.Wildcard != nil {
 					existing.Wildcard = n.Wildcard
 				}
@@ -502,6 +541,20 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 			_, fn := resolveCompletion(raw)
 			return fn
 		},
+		"completionNoSpace": func(raw string) bool {
+			raw = strings.TrimSpace(raw)
+			if raw == "" || raw == "file" || raw == "none" {
+				return false
+			}
+			return validationNoSpace[raw]
+		},
+		"pathWordCount": func(path string) int {
+			trimmed := strings.TrimSpace(path)
+			if trimmed == "" {
+				return 0
+			}
+			return len(strings.Fields(trimmed))
+		},
 	}
 
 	data.MaxOptWidth = calculateMaxOptWidth(data.Nodes)
@@ -516,12 +569,13 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 
 func collectNodes(parentPath string, m *model.Module) []node {
 	n := node{
-		Name:        m.Name,
-		Path:        parentPath,
-		Description: m.Description,
-		SubModules:  m.SubModules,
-		Commands:    m.Commands,
-		Arguments:   m.Arguments,
+		Name:           m.Name,
+		Path:           parentPath,
+		Description:    m.Description,
+		ModuleComplete: m.Complete,
+		SubModules:     m.SubModules,
+		Commands:       m.Commands,
+		Arguments:      m.Arguments,
 	}
 	if m.Wildcard != nil {
 		n.Wildcard = &tmplWildcard{

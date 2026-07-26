@@ -18,6 +18,7 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 			m := tree.GetOrCreateModule(ann.Name)
 			m.Description = ann.Description
 			m.Parent = ann.Parent
+			m.Complete = ann.ModuleComplete
 		}
 	}
 
@@ -99,8 +100,9 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 				return nil, fmt.Errorf("validation annotation missing name")
 			}
 			tree.Validations[ann.ValidationName] = &Validation{
-				Name:   ann.ValidationName,
-				Script: ann.ValidationScript,
+				Name:    ann.ValidationName,
+				Script:  ann.ValidationScript,
+				NoSpace: ann.ValidationNoSpace,
 			}
 
 		case annotation.KindExternal:

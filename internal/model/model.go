@@ -33,6 +33,9 @@ type Module struct {
 	Name        string
 	Description string
 	Parent      string
+	// Complete is an optional validation name used to complete the module's
+	// first positional value (e.g. `src <repo>`).
+	Complete string
 	Commands    []*Command
 	Arguments   []*Argument
 	SubModules  []*Module
@@ -48,8 +51,9 @@ type Wildcard struct {
 
 // Validation holds a named validation script used to provide dynamic completions.
 type Validation struct {
-	Name   string
-	Script string
+	Name    string
+	Script  string
+	NoSpace bool
 }
 
 // Tree is the root of all completion data parsed from @shgen annotations.

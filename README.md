@@ -25,7 +25,7 @@ Annotations can appear in any file — shell scripts, Go source, Python, plain t
 Annotation arguments preceded with a `?` are optional:
 
 ```
-@shgen module    ?parent=[parent]                                      [name]  [description]
+@shgen module    ?parent=[parent]  ?complete=[mode]                    [name]  [description]
 @shgen command   ?parent=[parent]                                      [name]  [description]
 @shgen argument  ?parent=[parent]  ?complete=[mode] ?alternate=[name] ?[name]  [description]
 @shgen wildcard  ?parent=[parent]  complete=[validation] ?masquerade=[command]
@@ -40,10 +40,30 @@ A module represents a named grouping of commands and arguments. It forms a node 
 
 Modules can be nested using `parent=` to mirror layered CLI structures (e.g. `kubectl`, `docker`).
 
+You can optionally set `complete=` on a module to provide completion for the module's **first positional argument** (the first token after that module path).
+
 ```
 @shgen module my-tool    My CLI tool
 @shgen module my-tool:deploy  parent=my-tool  Deploy subcommands
+@shgen module complete=repos  src  A helper that accepts a repo name
 ```
+
+`complete=` values follow the same rules as arguments/commands:
+
+| `complete=` value | Behaviour |
+|--------------------|-----------|
+| `file`             | Delegates to bash filename completion |
+| `none`             | Suppresses completions for that positional value |
+| `<validation-name>` | Calls the named `validation` function |
+
+Example:
+
+```
+@shgen validation src-ls  ls -1d "$HOME"/src/"$cur"* 2>/dev/null | sed 's#^.*/##'
+@shgen module complete=src-ls src A helper function to cd to src code repos
+```
+
+Note: in `validation` scripts, `cur` is already provided by the generated completion function, so reference it directly as shown above.
 
 ### `command`
 
