@@ -38,7 +38,7 @@ Annotation arguments preceded with a `?` are optional:
 
 A module represents a named grouping of commands and arguments. It forms a node in the completion tree. The root module (no `parent`) becomes the top-level program name.
 
-Modules can be nested using `parent=` to mirror layered CLI structures (e.g. `kubectl`, `docker`).
+Modules can be nested using `parent=` to mirror layered CLI structures (e.g. `kubectl`, `docker`, `openssl`, etc.).
 
 You can optionally set `complete=` on a module to provide completion for the module's **first positional argument** (the first token after that module path).
 
@@ -48,22 +48,7 @@ You can optionally set `complete=` on a module to provide completion for the mod
 @shgen module complete=repos  src  A helper that accepts a repo name
 ```
 
-`complete=` values follow the same rules as arguments/commands:
-
-| `complete=` value | Behaviour |
-|--------------------|-----------|
-| `file`             | Delegates to bash filename completion |
-| `none`             | Suppresses completions for that positional value |
-| `<validation-name>` | Calls the named `validation` function |
-
-Example:
-
-```
-@shgen validation src-ls  ls -1d "$HOME"/src/"$cur"* 2>/dev/null | sed 's#^.*/##'
-@shgen module complete=src-ls src A helper function to cd to src code repos
-```
-
-Note: in `validation` scripts, `cur` is already provided by the generated completion function, so reference it directly as shown above.
+See [`validation`](#validation) for info on usage of the `complete=` option.
 
 ### `command`
 
@@ -83,14 +68,10 @@ You can specify an alternate or short name for the flag using `alternate=`.
 @shgen argument parent=deploy alternate=-t --tag  Image tag to deploy
 ```
 
-Control how the flag's **value** is completed using `complete=`:
+Arguments support custom completion values ("validation") by setting the optional `complete=` option.
+See [`validation`](#validation) for info on usage of the `complete=` option.
 
-| `complete=` value | Behaviour |
-|--------------------|-----------|
-| *(omitted)*        | No value completion; only the flag name is suggested |
-| `file`             | Delegates to bash's default filename completion |
-| `none`             | Suppresses all completions after this flag (e.g. free-form strings, passwords) |
-| `<validation-name>` | Calls the named `validation` function to get dynamic candidates |
+Example arguments:
 
 ```
 @shgen argument parent=deploy complete=image-tags  --tag     Image tag to deploy
@@ -106,6 +87,23 @@ Defines a named completion function. The `[script]` is a single shell expression
 @shgen validation image-tags  echo -e "latest\nstable\nv1.0.0"
 @shgen validation namespaces  kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'
 ```
+
+In `validation` scripts, `cur` is already provided by the generated completion function, enabling refernce to the relevant current word as shown below.
+
+```
+@shgen validation src-ls  ls -1d "$HOME"/src/"$cur"* 2>/dev/null | sed 's#^.*/##'
+@shgen module complete=src-ls src A helper function to cd to src code repos
+```
+
+Supported validations:
+
+| `complete=` value | Behaviour |
+|--------------------|-----------|
+| *(omitted)*        | No value completion; only the flag name is suggested |
+| `file`             | Delegates to bash's default filename completion |
+| `none`             | Suppresses all completions after this flag (e.g. free-form strings, passwords) |
+| `<validation-name>` | Calls the named `validation` function to get dynamic candidates |
+
 
 ### `wildcard`
 

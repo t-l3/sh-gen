@@ -14,51 +14,7 @@ Available commands:
               all       (Print all resources)
 
 Additional completion:
-annotate
-api-resources
-api-versions
-apply
-attach
-auth
-autoscale
-certificate
-cluster-info
-completion
-config
-cordon
-cp
-create
-debug
-delete
-describe
-diff
-drain
-edit
-events
-exec
-explain
-expose
-get
-help
-kuberc
-kustomize
-label
-logs
-options
-patch
-plugin
-port-forward
-proxy
-replace
-rollout
-run
-scale
-set
-taint
-top
-uncordon
-version
-wait
+            [...]       (All kubectl commands)
 EOF
 return 0;
 }
@@ -72,6 +28,8 @@ k() {
 
   while [[ "$1" ]]; do
     case "$1" in
+      # @shgen validation kube-ns                                                             bash -c 'kubectl get namespaces -o custom-columns=NAME:.metadata.name --no-headers'
+      # @shgen command                  complete=kube-ns                         ns           Switch current context to a given namespace
       ns)
         shift
         if [[ "$1" ]]; then
@@ -82,11 +40,10 @@ k() {
       # @shgen validation kube-secrets                                                        bash -c 'kubectl get secrets -o custom-columns=NAME:.metadata.name --no-headers'
       # @shgen validation kube-secrets-static                                                 bash -c 'echo -e "exampleSecret\nmySecret\ntestSecret"'
       # @shgen validation kube-secret-keys                                                    bash -c 'kubectl get secrets -o json | jq -r ".items[].data | keys[]"'
-      # @shgen validation kube-secret-ns                                                      bash -c 'kubectl get namespaces -o custom-columns=NAME:.metadata.name --no-headers'
       # @shgen validation kube-secret-keys-static                                             bash -c 'echo -e "key1\npublic.crt\nprivate.key"; exit 0;'
       # @shgen command                  complete=kube-secrets                    secret       Print the string value for each key in a given secret or for the provided key
       # @shgen argument  parent=secret  complete=kube-secret-keys  alternate=-k  --key        Specific key from the given secret
-      # @shgen argument  parent=secret  complete=kube-secret-ns    alternate=-n  --namespace  Namespace containing the secret resource
+      # @shgen argument  parent=secret  complete=kube-ns           alternate=-n  --namespace  Namespace containing the secret resource
       secret)
         shift
         local _K_WRAPPER_SECRET_NAME _K_WRAPPER_SECRET_KEY _K_WRAPPER_SECRET_NAMESPACE=()
