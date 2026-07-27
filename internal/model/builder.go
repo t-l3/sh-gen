@@ -69,6 +69,7 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 				Description: ann.Description,
 				Validate:    ann.Validate,
 				Complete:    ann.Complete,
+				Repeatable:  ann.Repeatable,
 			}
 			if ann.Parent != "" {
 				// Parent could be a command or module. Try commands first.

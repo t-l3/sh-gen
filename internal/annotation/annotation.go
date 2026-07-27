@@ -4,7 +4,7 @@
 // Annotation syntax (each annotation is an end-of-line token beginning with @shgen):
 //   - module     ?parent=[parent] ?complete=[mode]                          [name] [description]
 //   - command    ?parent=[parent] ?complete=[mode]                          [name] [description]
-//   - argument   ?parent=[parent] ?complete=[mode] ?alternate=[name] ?position=[index] [name] [description]
+//   - argument   ?parent=[parent] ?complete=[mode] ?alternate=[name] ?position=[index] ?repeatable=[true|false] [name] [description]
 //   - wildcard   ?parent=[parent] ?complete=[validation] ?masquerade=[command]
 //   - validation [name] [script]
 //   - external   [script]
@@ -51,6 +51,7 @@ type Annotation struct {
 	Validate  string // optional ?validate=[validation]
 	Complete  string // optional ?complete=[file|none|<validation-name>]
 	Position  int    // optional ?position=[index] (1-based positional argument index)
+	Repeatable bool  // optional ?repeatable=[true|false], default false
 
 	// Validation-specific
 	ValidationName    string // name for validation block
@@ -87,6 +88,9 @@ var optionRe = regexp.MustCompile(`\??option=(\S+)`)
 
 // positionRe matches position=[value] (1-based positional argument index).
 var positionRe = regexp.MustCompile(`\??position=(\d+)`)
+
+// repeatableRe matches repeatable=[true|false].
+var repeatableRe = regexp.MustCompile(`\??repeatable=(\S+)`)
 
 // masqueradeRe matches masquerade=[value] (no spaces in value).
 var masqueradeRe = regexp.MustCompile(`\??masquerade=(\S+)`)
@@ -196,6 +200,7 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 //   - ?complete=[value]
 //   - ?alternate=[name]
 //   - ?position=[index] (optional 1-based positional index)
+//   - ?repeatable=[true|false] (optional; default false)
 //   - [name] (required argument name)
 //   - [description]
 func parseArgument(raw string) (Annotation, error) {
@@ -232,6 +237,20 @@ func parseArgument(raw string) (Annotation, error) {
 			return Annotation{}, fmt.Errorf("invalid positional argument index %q", raw[m[2]:m[3]])
 		}
 		ann.Position = n
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
+	}
+
+	// Extract optional ?repeatable=...
+	if m := repeatableRe.FindStringSubmatchIndex(raw); m != nil {
+		val := strings.ToLower(strings.TrimSpace(raw[m[2]:m[3]]))
+		switch val {
+		case "true", "1", "yes", "y", "on":
+			ann.Repeatable = true
+		case "false", "0", "no", "n", "off":
+			ann.Repeatable = false
+		default:
+			return Annotation{}, fmt.Errorf("invalid repeatable value %q", raw[m[2]:m[3]])
+		}
 		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 	}
 

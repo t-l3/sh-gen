@@ -27,7 +27,7 @@ Annotation arguments preceded with a `?` are optional:
 ```
 @shgen module    ?parent=[parent]  ?complete=[mode]                                        [name]  [description]
 @shgen command   ?parent=[parent]  ?complete=[mode]                                        [name]  [description]
-@shgen argument  ?parent=[parent]  ?complete=[mode]  ?alternate=[name]  ?position=[index]  [name]  [description]
+@shgen argument  ?parent=[parent]  ?complete=[mode]  ?alternate=[name]  ?position=[index]  ?repeatable=[true|false]  [name]  [description]
 @shgen wildcard  ?parent=[parent]  complete=[validation] ?masquerade=[command]
 
 @shgen validation  [name]  [script]
@@ -70,6 +70,8 @@ You can specify an alternate or short name for named flags using `alternate=`.
 
 For positional arguments, set `position=<index>` (1-based) to indicate which positional token the argument definition represents.
 
+Arguments are non-repeatable by default: once a flag has already been used in the current command line, it will not be suggested again. Set `repeatable=true` to allow a flag to continue being suggested after first use.
+
 Arguments support custom completion values ("validation") by setting the optional `complete=` option.
 See [`validation`](#validation) for info on usage of the `complete=` option.
 
@@ -79,6 +81,7 @@ Example arguments:
 @shgen argument parent=deploy complete=image-tags  --tag     Image tag to deploy
 @shgen argument parent=deploy complete=file        --values  Path to a values file
 @shgen argument parent=deploy complete=none        --secret  A secret value (no completion)
+@shgen argument parent=deploy repeatable=true      --label   Label selector (can be provided multiple times)
 @shgen argument parent=deploy position=1           service   Service name positional argument
 ```
 

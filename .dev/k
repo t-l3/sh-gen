@@ -15,7 +15,15 @@ Available commands:
               all       (Print all resources)
 
 Additional completion:
-            [...]       (All kubectl commands)
+annotate       completion     drain          kustomize      rollout
+api-resources  config         edit           label          run
+api-versions   cordon         events         logs           scale
+apply          cp             exec           options        set
+attach         create         explain        patch          taint
+auth           debug          expose         plugin         top
+autoscale      delete         get            port-forward   uncordon
+certificate    describe       help           proxy          version
+cluster-info   diff           kuberc         replace        wait
 EOF
 return 0;
 }

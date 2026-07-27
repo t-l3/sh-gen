@@ -618,6 +618,100 @@ func TestGenerate_WildcardOutput_UsesColumnPrinterHelper(t *testing.T) {
 	}
 }
 
+func TestGenerate_WildcardFallbackStdout_IsCapturedAndPrintedInColumns(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Wildcard = &model.Wildcard{
+		Complete: "kubectl-passthrough",
+	}
+
+	tree.Validations["kubectl-passthrough"] = &model.Validation{
+		Name: "kubectl-passthrough",
+		Script: `
+printf '%s\n' pods
+printf '%s\n' services
+printf '%s\n' namespaces
+`,
+	}
+
+	tree.Externals = []string{
+		`_get_comp_words_by_ref() {
+    local OPTIND opt no
+    while getopts "n:" opt; do
+        case "$opt" in
+            n) no="$OPTARG" ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    local _cur_ref=$1
+    local _prev_ref=$2
+    local _words_ref=$3
+    local _cword_ref=$4
+
+    local _cur _prev
+    _cur="${COMP_WORDS[COMP_CWORD]}"
+    if (( COMP_CWORD > 0 )); then
+        _prev="${COMP_WORDS[COMP_CWORD-1]}"
+    else
+        _prev=""
+    fi
+
+    eval "$_cur_ref=\"\$_cur\""
+    eval "$_prev_ref=\"\$_prev\""
+    eval "$_words_ref=(\"\${COMP_WORDS[@]}\")"
+    eval "$_cword_ref=\$COMP_CWORD"
+}`,
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "k"}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-lc", `
+source "`+scriptPath+`"
+export COLUMNS=120
+COMP_LINE="k "
+COMP_POINT=${#COMP_LINE}
+COMP_WORDS=(k "")
+COMP_CWORD=1
+COMPREPLY=()
+_k_completion
+echo "__PRINT_END__"
+printf '%s\n' "${COMPREPLY[@]}"
+`)
+	raw, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("running generated completion: %v\noutput:\n%s", err, string(raw))
+	}
+
+	output := string(raw)
+	parts := strings.SplitN(output, "__PRINT_END__", 2)
+	if len(parts) != 2 {
+		t.Fatalf("missing print sentinel in output:\n%s", output)
+	}
+
+	printed := parts[0]
+	completions := parts[1]
+
+	if !strings.Contains(printed, "pods") || !strings.Contains(printed, "services") || !strings.Contains(printed, "namespaces") {
+		t.Fatalf("expected wildcard stdout candidates to be printed, got:\n%s", printed)
+	}
+
+	if !strings.Contains(completions, "pods") || !strings.Contains(completions, "services") || !strings.Contains(completions, "namespaces") {
+		t.Fatalf("expected wildcard stdout candidates to be added into COMPREPLY, got:\n%s", completions)
+	}
+}
+
 func TestGenerate_LocalSemanticGroups_UseColumnPrinterHelper(t *testing.T) {
 	tree := model.NewTree()
 
@@ -649,5 +743,108 @@ func TestGenerate_LocalSemanticGroups_UseColumnPrinterHelper(t *testing.T) {
 
 	if !strings.Contains(script, "_k_print_columns \"${__shgen_argument_display[@]}\"") {
 		t.Fatalf("expected argument display to use column printer helper; got:\n%s", script)
+	}
+}
+
+func TestGenerate_RepeatableArguments_AffectSuggestionVisibility(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Commands = []*model.Command{
+		{
+			Name: "get",
+			Arguments: []*model.Argument{
+				{Name: "--namespace", Alternate: "-n", Description: "namespace", Repeatable: false},
+				{Name: "--label", Alternate: "-l", Description: "label selector", Repeatable: true},
+			},
+		},
+	}
+
+	tree.Externals = []string{
+		`_get_comp_words_by_ref() {
+    local OPTIND opt no
+    while getopts "n:" opt; do
+        case "$opt" in
+            n) no="$OPTARG" ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    local _cur_ref=$1
+    local _prev_ref=$2
+    local _words_ref=$3
+    local _cword_ref=$4
+
+    local _cur _prev
+    _cur="${COMP_WORDS[COMP_CWORD]}"
+    if (( COMP_CWORD > 0 )); then
+        _prev="${COMP_WORDS[COMP_CWORD-1]}"
+    else
+        _prev=""
+    fi
+
+    eval "$_cur_ref=\"\$_cur\""
+    eval "$_prev_ref=\"\$_prev\""
+    eval "$_words_ref=(\"\${COMP_WORDS[@]}\")"
+    eval "$_cword_ref=\$COMP_CWORD"
+}`,
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "k"}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	runCase := func(line string, words string, cword string) []string {
+		t.Helper()
+		cmd := exec.Command("bash", "-lc", `
+source "`+scriptPath+`"
+COMP_LINE='`+line+`'
+COMP_POINT=${#COMP_LINE}
+COMP_WORDS=(`+words+`)
+COMP_CWORD=`+cword+`
+COMPREPLY=()
+_k_completion
+echo "__PRINT_END__"
+printf '%s\n' "${COMPREPLY[@]}"
+`)
+		raw, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("running generated completion failed: %v\noutput:\n%s", err, string(raw))
+		}
+		output := string(raw)
+		parts := strings.SplitN(output, "__PRINT_END__", 2)
+		if len(parts) != 2 {
+			t.Fatalf("missing print sentinel in output:\n%s", output)
+		}
+		var replies []string
+		for _, l := range strings.Split(strings.TrimSpace(parts[1]), "\n") {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				replies = append(replies, l)
+			}
+		}
+		return replies
+	}
+
+	// --namespace is non-repeatable: after first use it should not be suggested again.
+	nonRepeat := runCase("k get --namespace dev --n", "k get --namespace dev --n", "4")
+	for _, c := range nonRepeat {
+		if c == "--namespace" || c == "-n" {
+			t.Fatalf("expected non-repeatable --namespace/-n not to be suggested again, got %#v", nonRepeat)
+		}
+	}
+
+	// --label is repeatable: after first use it should still be suggested.
+	repeatable := runCase("k get --label app=demo --l", "k get --label app=demo --l", "4")
+	if len(repeatable) != 1 || repeatable[0] != "--label" {
+		t.Fatalf("expected repeatable --label to remain suggested, got %#v", repeatable)
 	}
 }

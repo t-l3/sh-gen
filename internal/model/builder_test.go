@@ -55,6 +55,52 @@ func TestBuild_ValidationNoSpace_IsWiredToModel(t *testing.T) {
 	}
 }
 
+func TestBuild_ArgumentRepeatable_IsWiredToModel(t *testing.T) {
+	anns := []annotation.Annotation{
+		{Kind: annotation.KindModule, Name: "root"},
+		{Kind: annotation.KindCommand, Parent: "root", Name: "get"},
+		{Kind: annotation.KindArgument, Parent: "get", Name: "--namespace", Alternate: "-n", Repeatable: false},
+		{Kind: annotation.KindArgument, Parent: "get", Name: "--label", Alternate: "-l", Repeatable: true},
+	}
+
+	tree, err := Build(anns)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	root, ok := tree.Modules["root"]
+	if !ok {
+		t.Fatalf("expected root module to exist")
+	}
+	if len(root.Commands) != 1 {
+		t.Fatalf("expected one command on root, got %d", len(root.Commands))
+	}
+	cmd := root.Commands[0]
+	if len(cmd.Arguments) != 2 {
+		t.Fatalf("expected two arguments on get command, got %d", len(cmd.Arguments))
+	}
+
+	var nsArg, labelArg *Argument
+	for _, a := range cmd.Arguments {
+		switch a.Name {
+		case "--namespace":
+			nsArg = a
+		case "--label":
+			labelArg = a
+		}
+	}
+
+	if nsArg == nil || labelArg == nil {
+		t.Fatalf("expected both --namespace and --label arguments, got %#v", cmd.Arguments)
+	}
+	if nsArg.Repeatable {
+		t.Fatalf("expected --namespace Repeatable=false")
+	}
+	if !labelArg.Repeatable {
+		t.Fatalf("expected --label Repeatable=true")
+	}
+}
+
 func TestBuild_CommandAndArgumentParentResolution(t *testing.T) {
 	anns := []annotation.Annotation{
 		{Kind: annotation.KindModule, Name: "root"},

@@ -19,6 +19,9 @@ type Argument struct {
 	// Built-in values: "file" (filename completion), "none" (no suggestions).
 	// Any other value is treated as a validation function name (same as Validate).
 	Complete string
+	// Repeatable controls whether this argument can be suggested after it has
+	// already been used in the current command line. Defaults to false.
+	Repeatable bool
 }
 
 // Command represents a sub-command.

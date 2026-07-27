@@ -83,6 +83,32 @@ func TestScan_ArgumentPositionalIndex_IsParsed(t *testing.T) {
 	}
 }
 
+func TestScan_ArgumentRepeatable_IsParsed(t *testing.T) {
+	r := strings.NewReader(`# @` + `shgen argument ?parent=deploy ?alternate=-n ?repeatable=true --namespace Namespace`)
+
+	anns, err := Scan(r, "test")
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(anns) != 1 {
+		t.Fatalf("expected exactly one annotation, got %d", len(anns))
+	}
+
+	ann := anns[0]
+	if ann.Kind != KindArgument {
+		t.Fatalf("expected KindArgument, got %q", ann.Kind)
+	}
+	if ann.Name != "--namespace" {
+		t.Fatalf("expected argument name --namespace, got %q", ann.Name)
+	}
+	if ann.Alternate != "-n" {
+		t.Fatalf("expected alternate -n, got %q", ann.Alternate)
+	}
+	if !ann.Repeatable {
+		t.Fatalf("expected Repeatable=true")
+	}
+}
+
 func TestScan_CommandComplete_IsParsed(t *testing.T) {
 	r := strings.NewReader(`# @` + `shgen command parent=my-tool complete=targets deploy Deploy app`)
 

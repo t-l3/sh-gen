@@ -412,12 +412,30 @@ _{{ .FuncName }}_print_columns() {
             local __shgen_arg_matches=0
             local __shgen_name_matches=0
             local __shgen_alt_matches=0
-            if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+            local __shgen_allow_arg=1
+            {{- if not .Repeatable }}
+            for (( __shgen_seen_i=__shgen_ctx_start; __shgen_seen_i < cword; __shgen_seen_i++ )); do
+                local __shgen_seen_word="${words[__shgen_seen_i]}"
+                {{- if ne .Name "" }}
+                if [[ "$__shgen_seen_word" == "{{ .Name }}" || "$__shgen_seen_word" == "{{ .Name }}"=* ]]; then
+                    __shgen_allow_arg=0
+                    break
+                fi
+                {{- end }}
+                {{- if ne .Alternate "" }}
+                if [[ "$__shgen_seen_word" == "{{ .Alternate }}" || "$__shgen_seen_word" == "{{ .Alternate }}"=* ]]; then
+                    __shgen_allow_arg=0
+                    break
+                fi
+                {{- end }}
+            done
+            {{- end }}
+            if [[ $__shgen_allow_arg -eq 1 && "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
                 __shgen_arg_matches=1
                 __shgen_name_matches=1
             fi
             {{- if .Alternate }}
-            if [[ "{{ .Alternate }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+            if [[ $__shgen_allow_arg -eq 1 && "{{ .Alternate }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
                 __shgen_arg_matches=1
                 __shgen_alt_matches=1
             fi
@@ -546,7 +564,20 @@ _{{ .FuncName }}_print_columns() {
             if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count ]]; then
                 # Restore default word-break behaviour before delegating externally.
                 COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
-                {{ .Wildcard.Complete }}
+                local __shgen_wc_output=""
+                __shgen_wc_output="$({{ .Wildcard.Complete }} 2>/dev/null)"
+
+                # Some wildcard validators print newline-delimited candidates to
+                # stdout instead of mutating COMPREPLY directly. Capture and map
+                # those lines into COMPREPLY so we can render them in columns.
+                if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count && -n "$__shgen_wc_output" ]]; then
+                    while IFS= read -r __shgen_wc_line; do
+                        if [[ -n "$__shgen_wc_line" ]]; then
+                            COMPREPLY+=("$__shgen_wc_line")
+                        fi
+                    done <<< "$__shgen_wc_output"
+                fi
+
                 if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
                     local __shgen_wc_has_values=0
                     for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
