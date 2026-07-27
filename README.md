@@ -104,6 +104,20 @@ Supported validations:
 | `none`             | Suppresses all completions after this flag (e.g. free-form strings, passwords) |
 | `<validation-name>` | Calls the named `validation` function to get dynamic candidates |
 
+#### Validation context variables
+
+Generated completion exposes parsed command/argument context to validation scripts, to give validation scripts easy access to the already parsed values.
+
+Available variable patterns:
+
+- `_K_ARG_<NAME>`: resolved value for known flags in the current node  
+  - For an `argument` annotation with name `--namespace` -> `_K_ARG_NAMESPACE`
+- `_K_COM_ARG1`, `_K_COM_ARG2`, ...: positional values after the matched node path  
+  - For the secret name in `k secret my-secret ...` -> `_K_COM_ARG1`
+
+Names are sanitized to shell-safe variable names at runtime (uppercased, non `[a-zA-Z0-9_]` converted to `_`).
+
+See the annotations for the `secret` command in [.dev/k](.dev/k) for an example of using validation context variables
 
 ### `wildcard`
 

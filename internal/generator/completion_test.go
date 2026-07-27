@@ -400,3 +400,67 @@ func TestGenerate_NoSpaceOption_NotAppliedWithoutValidationFlag(t *testing.T) {
 		t.Fatalf("expected nospace option to be absent when validations do not set NoSpace, got %d\nscript:\n%s", got, script)
 	}
 }
+
+func TestGenerate_ValidationContextVariables_AvailableForArgumentCompletion(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Commands = []*model.Command{
+		{
+			Name: "secret",
+			Arguments: []*model.Argument{
+				{
+					Name:      "--namespace",
+					Alternate: "-n",
+				},
+				{
+					Name:      "--key",
+					Alternate: "-k",
+					Complete:  "ctx-values",
+				},
+			},
+		},
+	}
+
+	tree.Validations["ctx-values"] = &model.Validation{
+		Name: "ctx-values",
+		Script: `printf "ns:%s\ncmd:%s\narg1:%s\n" \
+"$_K_ARG_NAMESPACE" \
+"$_K_COM_SECRET" \
+"$_K_COM_ARG1"`,
+	}
+
+	tree.Externals = []string{bashCompWordsHelper()}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	replies := runCompletion(
+		t,
+		scriptPath,
+		"k secret mysecret --namespace kube-system --key ",
+		"k secret mysecret --namespace kube-system --key \"\"",
+		6,
+	)
+
+	got := strings.Join(replies, ",")
+	if !strings.Contains(got, "ns:kube-system") {
+		t.Fatalf("expected _K_ARG_NAMESPACE to be available in validation script, got: %#v", replies)
+	}
+	if !strings.Contains(got, "cmd:secret") {
+		t.Fatalf("expected _K_COM_SECRET to be available in validation script, got: %#v", replies)
+	}
+	if !strings.Contains(got, "arg1:mysecret") {
+		t.Fatalf("expected positional _K_COM_ARG1 to be available in validation script, got: %#v", replies)
+	}
+}

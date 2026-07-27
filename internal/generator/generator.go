@@ -90,6 +90,84 @@ const bashTemplate = `
             fi
             {{- end }}
 
+            # Populate context variables for validation scripts.
+            # - _K_COM_<NAME> for matched command/module path tokens
+            # - _K_ARG_<NAME> for known argument values in this node
+            # - _K_COM_ARG1, _K_COM_ARG2, ... for positional values after this node path
+            local __shgen_ctx_start=$(({{ pathWordCount $node.Path }} + 1))
+            local __shgen_ctx_expect_value=0
+            local __shgen_ctx_target=""
+            local __shgen_ctx_word=""
+            local __shgen_ctx_value=""
+            local __shgen_ctx_positional_index=0
+
+            for __shgen_ctx_part in $normalized_context; do
+                local __shgen_ctx_key="${__shgen_ctx_part^^}"
+                __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+                local __shgen_ctx_var="_K_COM_${__shgen_ctx_key}"
+                printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_part"
+            done
+
+            for (( i=__shgen_ctx_start; i < cword; i++ )); do
+                __shgen_ctx_word="${words[i]}"
+
+                if [[ $__shgen_ctx_expect_value -eq 1 ]]; then
+                    __shgen_ctx_expect_value=0
+                    if [[ -n "$__shgen_ctx_target" ]]; then
+                        __shgen_ctx_key="${__shgen_ctx_target#--}"
+                        __shgen_ctx_key="${__shgen_ctx_key#-}"
+                        __shgen_ctx_key="${__shgen_ctx_key^^}"
+                        __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+                        if [[ -n "$__shgen_ctx_key" ]]; then
+                            __shgen_ctx_var="_K_ARG_${__shgen_ctx_key}"
+                            printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
+                        fi
+                    fi
+                    __shgen_ctx_target=""
+                    continue
+                fi
+
+                case "$__shgen_ctx_word" in
+                    {{- range .Arguments }}
+                    {{- if or (ne .Name "") (ne .Alternate "") }}
+                    {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
+                        __shgen_ctx_expect_value=1
+                        __shgen_ctx_target="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
+                        ;;
+                    {{- end }}
+                    {{- end }}
+                    --*=*)
+                        __shgen_ctx_value="${__shgen_ctx_word#*=}"
+                        case "${__shgen_ctx_word%%=*}" in
+                            {{- range .Arguments }}
+                            {{- if or (ne .Name "") (ne .Alternate "") }}
+                            {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
+                                __shgen_ctx_key="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
+                                __shgen_ctx_key="${__shgen_ctx_key#--}"
+                                __shgen_ctx_key="${__shgen_ctx_key#-}"
+                                __shgen_ctx_key="${__shgen_ctx_key^^}"
+                                __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+                                if [[ -n "$__shgen_ctx_key" ]]; then
+                                    __shgen_ctx_var="_K_ARG_${__shgen_ctx_key}"
+                                    printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_value"
+                                fi
+                                ;;
+                            {{- end }}
+                            {{- end }}
+                        esac
+                        ;;
+                    -*)
+                        ;;
+                    "")
+                        ;;
+                    *)
+                        ((__shgen_ctx_positional_index++))
+                        local __shgen_ctx_pos_var="_K_COM_ARG${__shgen_ctx_positional_index}"
+                        printf -v "$__shgen_ctx_pos_var" '%s' "$__shgen_ctx_word"
+                        ;;
+                esac
+            done
+
             # Explicit completion override for argument values.
             case "$prev" in
                 {{- range .Arguments }}
