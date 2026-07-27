@@ -16,7 +16,8 @@ Available arguments:
     --store, -O (Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh})
   --process, -p (Override the program name used in the generated completion script)
   --grouped, -g (Group completion output into completion types)
-   --silent, -s (Suppress top-level legend output to stderr)
+    --quiet, -q (Suppress top-level legend output to stderr)
+   --silent, -s (Suppress all non-error output (script + top-level legend))
 ```
 
 Annotations can appear in any file — shell scripts, Go source, Python, plain text — anywhere a line contains `@shgen`. Lines that don't contain a recognised annotation are silently ignored.
@@ -192,6 +193,11 @@ sh-gen -p my-tool -o my-tool-completion.bash my-tool.sh
 source my-tool-completion.bash
 my-tool # <TAB><TAB>
 ```
+
+Output control flags:
+
+- `--quiet` / `-q`: suppress the root legend (`stderr`) while still emitting the completion script (`stdout` or `--output` file).
+- `--silent` / `-s`: suppress all non-error terminal output (both script output and legend output).
 
 When using `--store` / `-O`, sh-gen writes two files under `~/.config/t-l3/sh-gen/`:
 

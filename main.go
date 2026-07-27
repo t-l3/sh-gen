@@ -11,7 +11,8 @@
 //	-O, --store            Store output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}.
 //	-p, --process <name>   Override the program name used in the completion script.
 //	-g, --grouped          Prefix command and argument groups with semantic labels.
-//	-s, --silent           Do not print top-level legend output to stderr after generation.
+//	-q, --quiet            Do not print top-level legend output to stderr after generation.
+//	-s, --silent           Suppress all non-error output (both script and legend output).
 //	-h, --help             Show this help message.
 //
 // @shgen module sh-gen Scans source files for @shgen annotations and generates bash completion scripts
@@ -19,7 +20,8 @@
 // @shgen argument parent=sh-gen               alternate=-O --store   Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}
 // @shgen argument parent=sh-gen complete=none alternate=-p --process Override the program name used in the generated completion script
 // @shgen argument parent=sh-gen               alternate=-g --grouped Group completion output into completion types
-// @shgen argument parent=sh-gen               alternate=-s --silent  Suppress top-level legend output to stderr
+// @shgen argument parent=sh-gen               alternate=-q --quiet   Suppress top-level legend output to stderr
+// @shgen argument parent=sh-gen               alternate=-s --silent  Suppress all non-error output (script + top-level legend)
 package main
 
 import (
@@ -50,6 +52,7 @@ func run() error {
 		storeOutput    bool
 		programName    string
 		semanticGroups bool
+		quiet          bool
 		silent         bool
 	)
 
@@ -61,7 +64,9 @@ func run() error {
 	flag.StringVar(&programName, "p", programName, "See -process `name`")
 	flag.BoolVar(&semanticGroups, "grouped", false, "Group completion output into completion types")
 	flag.BoolVar(&semanticGroups, "g", semanticGroups, "See --grouped")
-	flag.BoolVar(&silent, "silent", false, "Suppress top-level legend output to stderr")
+	flag.BoolVar(&quiet, "quiet", false, "Suppress top-level legend output to stderr")
+	flag.BoolVar(&quiet, "q", quiet, "See --quiet")
+	flag.BoolVar(&silent, "silent", false, "Suppress all non-error output (script + top-level legend)")
 	flag.BoolVar(&silent, "s", silent, "See --silent")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: sh-gen [flags] <file> [file...]\n\n")
@@ -119,8 +124,10 @@ func run() error {
 		return fmt.Errorf("generating completion script: %w", err)
 	}
 
-	if _, err := out.Write(generated.Bytes()); err != nil {
-		return fmt.Errorf("writing generated completion script: %w", err)
+	if !silent {
+		if _, err := out.Write(generated.Bytes()); err != nil {
+			return fmt.Errorf("writing generated completion script: %w", err)
+		}
 	}
 
 	if storeOutput {
@@ -129,7 +136,7 @@ func run() error {
 		}
 	}
 
-	if !silent {
+	if !silent && !quiet {
 		if err := printTopLevelLegend(os.Stderr, generated.String()); err != nil {
 			return fmt.Errorf("printing top-level legend: %w", err)
 		}

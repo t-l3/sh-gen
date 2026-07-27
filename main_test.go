@@ -78,7 +78,7 @@ func TestRun_GeneratesCompletionToOutputFile(t *testing.T) {
 		t.Fatalf("writing input file: %v", err)
 	}
 
-	err := runWithArgs(t, []string{"-s", "-o", output, input})
+	err := runWithArgs(t, []string{"-q", "-o", output, input})
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -132,7 +132,7 @@ func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	}
 
 	firstStdout, err := captureStdout(t, func() error {
-		return runWithArgs(t, []string{"-s", "--store", input})
+		return runWithArgs(t, []string{"-q", "--store", input})
 	})
 	if err != nil {
 		t.Fatalf("first run() error = %v", err)
@@ -182,7 +182,7 @@ func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	}
 
 	secondStdout, err := captureStdout(t, func() error {
-		return runWithArgs(t, []string{"-s", "-O", input})
+		return runWithArgs(t, []string{"-q", "-O", input})
 	})
 	if err != nil {
 		t.Fatalf("second run() error = %v", err)
@@ -212,5 +212,42 @@ func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	}
 	if !strings.Contains(secondLazyText, "complete -F _my_tool_completion_lazy my-tool") {
 		t.Fatalf("expected overwritten lazy script completion binding, got:\n%s", secondLazyText)
+	}
+}
+
+func TestRun_SilentSuppressesStdoutButStoreStillWritesFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpHome := filepath.Join(tmpDir, "home")
+	if err := os.MkdirAll(tmpHome, 0o755); err != nil {
+		t.Fatalf("creating temp home directory: %v", err)
+	}
+	t.Setenv("HOME", tmpHome)
+
+	input := filepath.Join(tmpDir, "annotations.txt")
+	content := strings.Join([]string{
+		`# @` + `shgen module my-tool My CLI`,
+		`# @` + `shgen command parent=my-tool deploy Deploy service`,
+	}, "\n")
+	if err := os.WriteFile(input, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing input file: %v", err)
+	}
+
+	stdout, err := captureStdout(t, func() error {
+		return runWithArgs(t, []string{"-s", "--store", input})
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout output when --silent is set, got:\n%s", stdout)
+	}
+
+	storedPath := filepath.Join(tmpHome, ".config", "t-l3", "sh-gen", "my-tool.comp.sh")
+	stored, err := os.ReadFile(storedPath)
+	if err != nil {
+		t.Fatalf("reading stored script: %v", err)
+	}
+	if !strings.Contains(string(stored), "complete -F _my_tool_completion my-tool") {
+		t.Fatalf("expected stored script to be generated, got:\n%s", string(stored))
 	}
 }
