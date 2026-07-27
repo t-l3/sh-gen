@@ -26,7 +26,7 @@ Annotation arguments preceded with a `?` are optional:
 
 ```
 @shgen module    ?parent=[parent]  ?complete=[mode]                                        [name]  [description]
-@shgen command   ?parent=[parent]                                                          [name]  [description]
+@shgen command   ?parent=[parent]  ?complete=[mode]                                        [name]  [description]
 @shgen argument  ?parent=[parent]  ?complete=[mode]  ?alternate=[name]  ?position=[index]  [name]  [description]
 @shgen wildcard  ?parent=[parent]  complete=[validation] ?masquerade=[command]
 
@@ -91,7 +91,7 @@ Defines a named completion function. The `[script]` is a single shell expression
 @shgen validation namespaces  kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'
 ```
 
-In `validation` scripts, `cur` is already provided by the generated completion function, enabling refernce to the relevant current word as shown below.
+In `validation` scripts, `cur` is already provided by the generated completion function, enabling reference to the relevant current word as shown below.
 
 ```
 @shgen validation src-ls  ls -1d "$HOME"/src/"$cur"* 2>/dev/null | sed 's#^.*/##'
@@ -191,4 +191,4 @@ my-tool # <TAB><TAB>
 
 See [`example.txt`](.dev/example.txt) for a comprehensive multi-command annotation file modelling a fictional `sh-gen-test` CLI, suitable for manual testing of completion behaviour.
 
-See [my example kubectl wrapper - `k`](.dev/k) for an example of a wrapper script with it's own bash completion, in addition to handling the wrapped applications completion too
+See [my example kubectl wrapper - `k`](.dev/k) for an example of a wrapper script with its own bash completion, in addition to handling the wrapped application's completion too.

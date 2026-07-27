@@ -82,3 +82,77 @@ func TestScan_ArgumentPositionalIndex_IsParsed(t *testing.T) {
 		t.Fatalf("expected name key for positional argument, got %q", ann.Name)
 	}
 }
+
+func TestScan_CommandComplete_IsParsed(t *testing.T) {
+	r := strings.NewReader(`# @` + `shgen command parent=my-tool complete=targets deploy Deploy app`)
+
+	anns, err := Scan(r, "test")
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(anns) != 1 {
+		t.Fatalf("expected exactly one annotation, got %d", len(anns))
+	}
+
+	ann := anns[0]
+	if ann.Kind != KindCommand {
+		t.Fatalf("expected KindCommand, got %q", ann.Kind)
+	}
+	if ann.Parent != "my-tool" {
+		t.Fatalf("expected parent my-tool, got %q", ann.Parent)
+	}
+	if ann.Name != "deploy" {
+		t.Fatalf("expected command name deploy, got %q", ann.Name)
+	}
+	if ann.CommandComplete != "targets" {
+		t.Fatalf("expected command complete targets, got %q", ann.CommandComplete)
+	}
+}
+
+func TestScan_WildcardAndExternal_AreParsed(t *testing.T) {
+	r := strings.NewReader(strings.Join([]string{
+		`# @` + `shgen wildcard parent=my-tool complete=pass masquerade=kubectl`,
+		`# @` + `shgen external _helper() { echo ok; }`,
+	}, "\n"))
+
+	anns, err := Scan(r, "test")
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(anns) != 2 {
+		t.Fatalf("expected two annotations, got %d", len(anns))
+	}
+
+	if anns[0].Kind != KindWildcard {
+		t.Fatalf("expected first annotation KindWildcard, got %q", anns[0].Kind)
+	}
+	if anns[0].Parent != "my-tool" || anns[0].WildcardComplete != "pass" || anns[0].WildcardMasquerade != "kubectl" {
+		t.Fatalf("unexpected wildcard fields: %#v", anns[0])
+	}
+
+	if anns[1].Kind != KindExternal {
+		t.Fatalf("expected second annotation KindExternal, got %q", anns[1].Kind)
+	}
+	if anns[1].ExternalScript != `_helper() { echo ok; }` {
+		t.Fatalf("unexpected external script: %q", anns[1].ExternalScript)
+	}
+}
+
+func TestScan_InvalidAnnotation_IsIgnored(t *testing.T) {
+	r := strings.NewReader(strings.Join([]string{
+		`# @` + `shgen argument position=0 secret Invalid positional index`,
+		`# @` + `shgen module root Root module`,
+	}, "\n"))
+
+	anns, err := Scan(r, "test")
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+
+	if len(anns) != 1 {
+		t.Fatalf("expected malformed annotation to be skipped and one valid annotation retained, got %d", len(anns))
+	}
+	if anns[0].Kind != KindModule || anns[0].Name != "root" {
+		t.Fatalf("unexpected parsed annotation: %#v", anns[0])
+	}
+}

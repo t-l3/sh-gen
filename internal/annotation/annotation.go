@@ -2,9 +2,10 @@
 // from source and script files.
 //
 // Annotation syntax (each annotation is an end-of-line token beginning with @shgen):
-//   - module   ?parent=[parent] ?complete=[validation]  [name] [description]
-//   - command  ?parent=[parent]                         [name] [description]
-//   - argument ?parent=[parent] ?validate=[validation] ?position=[index] [name] [description]
+//   - module     ?parent=[parent] ?complete=[mode]                          [name] [description]
+//   - command    ?parent=[parent] ?complete=[mode]                          [name] [description]
+//   - argument   ?parent=[parent] ?complete=[mode] ?alternate=[name] ?position=[index] [name] [description]
+//   - wildcard   ?parent=[parent] ?complete=[validation] ?masquerade=[command]
 //   - validation [name] [script]
 //   - external   [script]
 package annotation
@@ -192,7 +193,6 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 //
 // Properties:
 //   - ?parent=[parent]
-//   - ?validate=[validation]
 //   - ?complete=[value]
 //   - ?alternate=[name]
 //   - ?position=[index] (optional 1-based positional index)

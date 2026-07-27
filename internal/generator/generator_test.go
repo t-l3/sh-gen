@@ -2,9 +2,11 @@ package generator
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -508,5 +510,144 @@ printf '%s\n' "${COMPREPLY[@]}"
 	}
 	if len(repliesShort) != 1 || repliesShort[0] != "-o" {
 		t.Fatalf("expected COMPREPLY to include only short form when matching -o, got: %#v", repliesShort)
+	}
+}
+
+func TestGenerate_DeterministicOutputAcrossMapInsertionOrder(t *testing.T) {
+	makeTree := func(validationOrder []string) *model.Tree {
+		tree := model.NewTree()
+
+		root := tree.GetOrCreateModule("k")
+		root.Parent = ""
+		root.Description = "root"
+		root.Commands = []*model.Command{
+			{
+				Name:        "get",
+				Description: "get resources",
+				Complete:    "targets",
+			},
+		}
+
+		for _, name := range validationOrder {
+			tree.Validations[name] = &model.Validation{
+				Name:   name,
+				Script: fmt.Sprintf(`echo "%s-value"`, name),
+			}
+		}
+
+		return tree
+	}
+
+	treeA := makeTree([]string{"zeta", "alpha", "targets"})
+	treeB := makeTree([]string{"targets", "zeta", "alpha"})
+
+	var outA bytes.Buffer
+	if err := Generate(&outA, treeA, Options{ProgramName: "k"}); err != nil {
+		t.Fatalf("Generate() for treeA error = %v", err)
+	}
+
+	var outB bytes.Buffer
+	if err := Generate(&outB, treeB, Options{ProgramName: "k"}); err != nil {
+		t.Fatalf("Generate() for treeB error = %v", err)
+	}
+
+	if outA.String() != outB.String() {
+		t.Fatalf("expected deterministic generated output for equivalent trees with different map insertion order")
+	}
+}
+
+func TestGenerate_ProgramNameSelectionFromRootModules_IsDeterministic(t *testing.T) {
+	tree := model.NewTree()
+
+	alpha := tree.GetOrCreateModule("alpha")
+	alpha.Parent = ""
+	alpha.Description = "alpha root"
+
+	beta := tree.GetOrCreateModule("beta")
+	beta.Parent = ""
+	beta.Description = "beta root"
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	re := regexp.MustCompile(`complete -F _([a-zA-Z0-9_]+)_completion ([a-zA-Z0-9_\-]+)$`)
+	m := re.FindStringSubmatch(script)
+	if len(m) != 3 {
+		t.Fatalf("could not find final complete line in generated script:\n%s", script)
+	}
+
+	if m[2] != "alpha" {
+		t.Fatalf("expected deterministic program name 'alpha' from root modules, got %q", m[2])
+	}
+}
+
+func TestGenerate_WildcardOutput_UsesColumnPrinterHelper(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Wildcard = &model.Wildcard{
+		Complete:   "kubectl-passthrough",
+		Masquerade: "kubectl",
+	}
+
+	tree.Validations["kubectl-passthrough"] = &model.Validation{
+		Name:   "kubectl-passthrough",
+		Script: ":",
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "k", UseSemanticGroups: true}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if !strings.Contains(script, "_k_print_columns()") {
+		t.Fatalf("expected generated script to include column printer helper; got:\n%s", script)
+	}
+
+	if !strings.Contains(script, "_k_print_columns \"${__shgen_wc_values[@]}\"") {
+		t.Fatalf("expected wildcard values to use column printer helper; got:\n%s", script)
+	}
+
+	if !strings.Contains(script, "_k_print_columns \"${__shgen_wc_options[@]}\"") {
+		t.Fatalf("expected wildcard options to use column printer helper; got:\n%s", script)
+	}
+}
+
+func TestGenerate_LocalSemanticGroups_UseColumnPrinterHelper(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.SubModules = []*model.Module{
+		{Name: "ctx", Description: "contexts"},
+	}
+	root.Commands = []*model.Command{
+		{Name: "get", Description: "get resources"},
+	}
+	root.Arguments = []*model.Argument{
+		{Name: "--namespace", Alternate: "-n", Description: "namespace"},
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "k", UseSemanticGroups: true}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if !strings.Contains(script, "_k_print_columns \"${__shgen_module_display[@]}\"") {
+		t.Fatalf("expected module display to use column printer helper; got:\n%s", script)
+	}
+
+	if !strings.Contains(script, "_k_print_columns \"${__shgen_command_display[@]}\"") {
+		t.Fatalf("expected command display to use column printer helper; got:\n%s", script)
+	}
+
+	if !strings.Contains(script, "_k_print_columns \"${__shgen_argument_display[@]}\"") {
+		t.Fatalf("expected argument display to use column printer helper; got:\n%s", script)
 	}
 }

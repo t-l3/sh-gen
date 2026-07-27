@@ -3,6 +3,7 @@ package generator
 import (
 	"bytes"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -29,6 +30,57 @@ const bashTemplate = `
     {{ .Script }}
 }
 {{ end }}
+
+_{{ .FuncName }}_print_columns() {
+    local -a __shgen_items=("$@")
+    local __shgen_cols="${COLUMNS:-}"
+    if [[ -z "$__shgen_cols" || $__shgen_cols -le 0 ]]; then
+        __shgen_cols=$(tput cols 2>/dev/null)
+    fi
+    if [[ -z "$__shgen_cols" || $__shgen_cols -le 0 ]]; then
+        __shgen_cols=80
+    fi
+
+    local __shgen_max_len=0
+    local __shgen_item
+    for __shgen_item in "${__shgen_items[@]}"; do
+        local __shgen_len=${#__shgen_item}
+        if (( __shgen_len > __shgen_max_len )); then
+            __shgen_max_len=$__shgen_len
+        fi
+    done
+
+    if (( __shgen_max_len == 0 )); then
+        return 0
+    fi
+
+    local __shgen_col_width=$((__shgen_max_len + 2))
+    local __shgen_col_count=$((__shgen_cols / __shgen_col_width))
+    if (( __shgen_col_count < 1 )); then
+        __shgen_col_count=1
+    fi
+
+    local __shgen_count=${#__shgen_items[@]}
+    local __shgen_row_count=$(((__shgen_count + __shgen_col_count - 1) / __shgen_col_count))
+    local __shgen_r __shgen_c __shgen_idx
+
+    for (( __shgen_r=0; __shgen_r<__shgen_row_count; __shgen_r++ )); do
+        for (( __shgen_c=0; __shgen_c<__shgen_col_count; __shgen_c++ )); do
+            __shgen_idx=$((__shgen_c * __shgen_row_count + __shgen_r))
+            if (( __shgen_idx >= __shgen_count )); then
+                continue
+            fi
+
+            __shgen_item="${__shgen_items[__shgen_idx]}"
+            if (( __shgen_c == __shgen_col_count - 1 || __shgen_idx + __shgen_row_count >= __shgen_count )); then
+                printf "%s" "$__shgen_item"
+            else
+                printf "%-*s" "$__shgen_col_width" "$__shgen_item"
+            fi
+        done
+        printf "\n"
+    done
+}
 
  _{{ .FuncName }}_completion() {
     local cur prev words cword max_opt_width="{{ .MaxOptWidth }}"
@@ -315,32 +367,45 @@ const bashTemplate = `
             fi
             {{- end }}
             {{- if .SubModules }}
+            local -a __shgen_module_display=()
             {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable modules:"; fi{{ end }}
             {{- range .SubModules }}
             if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
                 __shgen_matched+=("{{ .Name }}")
+                local __shgen_module_line=""
+                printf -v __shgen_module_line "%${max_opt_width}s\t%s" "{{ .Name }}" "({{ .Description }})"
+                __shgen_module_display+=("$__shgen_module_line")
+            fi
+            {{- end }}
+            if [[ ${#__shgen_module_display[@]} -gt 0 ]]; then
                 if [[ $__shgen_printed -eq 0 ]]; then
                     printf "\n"
                     __shgen_printed=1
                 fi
-                printf "%${max_opt_width}s\t%s\n" "{{ .Name }}" "({{ .Description }})"
+                _{{ $.FuncName }}_print_columns "${__shgen_module_display[@]}"
             fi
             {{- end }}
-            {{- end }}
             {{- if .Commands }}
+            local -a __shgen_command_display=()
             {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable commands:"; fi{{ end }}
             {{- range .Commands }}
             if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
                 __shgen_matched+=("{{ .Name }}")
+                local __shgen_command_line=""
+                printf -v __shgen_command_line "%${max_opt_width}s\t%s" "{{ .Name }}" "({{ .Description }})"
+                __shgen_command_display+=("$__shgen_command_line")
+            fi
+            {{- end }}
+            if [[ ${#__shgen_command_display[@]} -gt 0 ]]; then
                 if [[ $__shgen_printed -eq 0 ]]; then
                     printf "\n"
                     __shgen_printed=1
                 fi
-                printf "%${max_opt_width}s\t%s\n" "{{ .Name }}" "({{ .Description }})"
+                _{{ $.FuncName }}_print_columns "${__shgen_command_display[@]}"
             fi
             {{- end }}
-            {{- end }}
             {{- if .Arguments }}
+            local -a __shgen_argument_display=()
             {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable arguments:"; fi{{ end }}
             {{- range .Arguments }}
             {{- if or (ne .Name "") (ne .Alternate "") }}
@@ -366,14 +431,19 @@ const bashTemplate = `
                     __shgen_matched+=("{{ .Alternate }}")
                 fi
                 {{- end }}
+                local __shgen_argument_line=""
+                printf -v __shgen_argument_line "%${max_opt_width}s\t%s" "{{ argDisplayLabel . }}" "({{ .Description }})"
+                __shgen_argument_display+=("$__shgen_argument_line")
+            fi
+            {{- end }}
+            {{- end }}
+            if [[ ${#__shgen_argument_display[@]} -gt 0 ]]; then
                 if [[ $__shgen_printed -eq 0 ]]; then
                     printf "\n"
                     __shgen_printed=1
                 fi
-                printf "%${max_opt_width}s\t%s\n" "{{ argDisplayLabel . }}" "({{ .Description }})"
+                _{{ $.FuncName }}_print_columns "${__shgen_argument_display[@]}"
             fi
-            {{- end }}
-            {{- end }}
             {{- end }}
             {{- if .Wildcard }}
             # Wildcard completion
@@ -442,31 +512,30 @@ const bashTemplate = `
                                 printf "\n"
                             fi
                             __shgen_printed=1
-                            local __shgen_wc_printed=0
-                            # Print command/value suggestions first.
+                            local -a __shgen_wc_values=()
+                            local -a __shgen_wc_options=()
+                            local -a __shgen_wc_other=()
                             for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
                                 local __shgen_wc_item="${COMPREPLY[i]}"
-                                if [[ "$__shgen_wc_item" != -* && "$__shgen_wc_item" != \\-* && -n "$__shgen_wc_item" ]]; then
-                                    printf "%s\n" "$__shgen_wc_item"
-                                    __shgen_wc_printed=1
+                                if [[ -z "$__shgen_wc_item" ]]; then
+                                    continue
                                 fi
-                            done
-                            # Print option suggestions (leading - / --) after commands.
-                            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                                local __shgen_wc_item="${COMPREPLY[i]}"
                                 if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
-                                    printf "%s\n" "$__shgen_wc_item"
-                                    __shgen_wc_printed=1
+                                    __shgen_wc_options+=("$__shgen_wc_item")
+                                elif [[ "$__shgen_wc_item" != -* ]]; then
+                                    __shgen_wc_values+=("$__shgen_wc_item")
+                                else
+                                    __shgen_wc_other+=("$__shgen_wc_item")
                                 fi
                             done
-                            # Fallback: if items exist but nothing matched the grouping filters, print raw.
-                            if [[ $__shgen_wc_printed -eq 0 ]]; then
-                                for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                                    local __shgen_wc_item="${COMPREPLY[i]}"
-                                    if [[ -n "$__shgen_wc_item" ]]; then
-                                        printf "%s\n" "$__shgen_wc_item"
-                                    fi
-                                done
+                            if [[ ${#__shgen_wc_values[@]} -gt 0 ]]; then
+                                _{{ $.FuncName }}_print_columns "${__shgen_wc_values[@]}"
+                            fi
+                            if [[ ${#__shgen_wc_options[@]} -gt 0 ]]; then
+                                _{{ $.FuncName }}_print_columns "${__shgen_wc_options[@]}"
+                            fi
+                            if [[ ${#__shgen_wc_other[@]} -gt 0 ]]; then
+                                _{{ $.FuncName }}_print_columns "${__shgen_wc_other[@]}"
                             fi
                         fi
                     fi
@@ -497,31 +566,30 @@ const bashTemplate = `
                             printf "\n"
                         fi
                         __shgen_printed=1
-                        local __shgen_wc_printed=0
-                        # Print command/value suggestions first.
+                        local -a __shgen_wc_values=()
+                        local -a __shgen_wc_options=()
+                        local -a __shgen_wc_other=()
                         for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
                             local __shgen_wc_item="${COMPREPLY[i]}"
-                            if [[ "$__shgen_wc_item" != -* && "$__shgen_wc_item" != \\-* && -n "$__shgen_wc_item" ]]; then
-                                printf "%s\n" "$__shgen_wc_item"
-                                __shgen_wc_printed=1
+                            if [[ -z "$__shgen_wc_item" ]]; then
+                                continue
                             fi
-                        done
-                        # Print option suggestions (leading - / --) after commands.
-                        for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                            local __shgen_wc_item="${COMPREPLY[i]}"
                             if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
-                                printf "%s\n" "$__shgen_wc_item"
-                                __shgen_wc_printed=1
+                                __shgen_wc_options+=("$__shgen_wc_item")
+                            elif [[ "$__shgen_wc_item" != -* ]]; then
+                                __shgen_wc_values+=("$__shgen_wc_item")
+                            else
+                                __shgen_wc_other+=("$__shgen_wc_item")
                             fi
                         done
-                        # Fallback: if items exist but nothing matched the grouping filters, print raw.
-                        if [[ $__shgen_wc_printed -eq 0 ]]; then
-                            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                                local __shgen_wc_item="${COMPREPLY[i]}"
-                                if [[ -n "$__shgen_wc_item" ]]; then
-                                    printf "%s\n" "$__shgen_wc_item"
-                                fi
-                            done
+                        if [[ ${#__shgen_wc_values[@]} -gt 0 ]]; then
+                            _{{ $.FuncName }}_print_columns "${__shgen_wc_values[@]}"
+                        fi
+                        if [[ ${#__shgen_wc_options[@]} -gt 0 ]]; then
+                            _{{ $.FuncName }}_print_columns "${__shgen_wc_options[@]}"
+                        fi
+                        if [[ ${#__shgen_wc_other[@]} -gt 0 ]]; then
+                            _{{ $.FuncName }}_print_columns "${__shgen_wc_other[@]}"
                         fi
                     fi
                 fi
@@ -581,11 +649,15 @@ type templateData struct {
 func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 	programName := opts.ProgramName
 	if programName == "" {
+		var rootNames []string
 		for _, m := range tree.Modules {
 			if m.Parent == "" && m.Name != "" {
-				programName = m.Name
-				break
+				rootNames = append(rootNames, m.Name)
 			}
+		}
+		if len(rootNames) > 0 {
+			sort.Strings(rootNames)
+			programName = rootNames[0]
 		}
 	}
 	if programName == "" {
@@ -599,7 +671,16 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 		Externals:         tree.Externals,
 	}
 
-	for _, v := range tree.Validations {
+	validationNames := make([]string, 0, len(tree.Validations))
+	for name := range tree.Validations {
+		validationNames = append(validationNames, name)
+	}
+	sort.Strings(validationNames)
+	for _, name := range validationNames {
+		v := tree.Validations[name]
+		if v == nil {
+			continue
+		}
 		data.Validations = append(data.Validations, tmplValidation{
 			FuncName: "_shgen_validate_" + sanitizeFuncName(v.Name),
 			Script:   v.Script,
@@ -649,10 +730,17 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 	}
 
 	// Flatten map back to slice
-	for _, n := range rootNodesMap {
+	nodePaths := make([]string, 0, len(rootNodesMap))
+	for path := range rootNodesMap {
+		nodePaths = append(nodePaths, path)
+	}
+	sort.Strings(nodePaths)
+	for _, path := range nodePaths {
+		n := rootNodesMap[path]
 		data.Nodes = append(data.Nodes, n)
 		data.KnownPaths = append(data.KnownPaths, strings.TrimSpace(n.Path))
 	}
+	sort.Strings(data.KnownPaths)
 
 	resolveCompletion := func(raw string) (kind string, fn string) {
 		raw = strings.TrimSpace(raw)
