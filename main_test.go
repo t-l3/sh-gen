@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,33 @@ func runWithArgs(t *testing.T, args []string) error {
 	}()
 
 	return run()
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("creating stdout pipe: %v", err)
+	}
+	os.Stdout = w
+
+	runErr := fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing stdout writer: %v", err)
+	}
+	os.Stdout = oldStdout
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading captured stdout: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("closing stdout reader: %v", err)
+	}
+
+	return string(out), runErr
 }
 
 func TestRun_NoInputFiles_ReturnsError(t *testing.T) {
@@ -82,5 +110,107 @@ func TestPrintTopLevelLegend_MissingBinding_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "could not discover completion binding") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpHome := filepath.Join(tmpDir, "home")
+	if err := os.MkdirAll(tmpHome, 0o755); err != nil {
+		t.Fatalf("creating temp home directory: %v", err)
+	}
+	t.Setenv("HOME", tmpHome)
+
+	input := filepath.Join(tmpDir, "annotations.txt")
+
+	firstContent := strings.Join([]string{
+		`# @` + `shgen module my-tool My CLI`,
+		`# @` + `shgen command parent=my-tool deploy Deploy service`,
+	}, "\n")
+	if err := os.WriteFile(input, []byte(firstContent), 0o644); err != nil {
+		t.Fatalf("writing first input file: %v", err)
+	}
+
+	firstStdout, err := captureStdout(t, func() error {
+		return runWithArgs(t, []string{"-s", "--store", input})
+	})
+	if err != nil {
+		t.Fatalf("first run() error = %v", err)
+	}
+	if !strings.Contains(firstStdout, "complete -F _my_tool_completion my-tool") {
+		t.Fatalf("expected generated script on stdout, got:\n%s", firstStdout)
+	}
+
+	storedPath := filepath.Join(tmpHome, ".config", "t-l3", "sh-gen", "my-tool.comp.sh")
+	firstStored, err := os.ReadFile(storedPath)
+	if err != nil {
+		t.Fatalf("reading first stored script: %v", err)
+	}
+	if !strings.Contains(string(firstStored), "deploy") {
+		t.Fatalf("expected first stored script to include deploy command, got:\n%s", string(firstStored))
+	}
+
+	lazyPath := filepath.Join(tmpHome, ".config", "t-l3", "sh-gen", "my-tool.lazycomp.sh")
+	firstLazy, err := os.ReadFile(lazyPath)
+	if err != nil {
+		t.Fatalf("reading first lazy stored script: %v", err)
+	}
+	firstLazyText := string(firstLazy)
+	if !strings.Contains(firstLazyText, "if ! declare -F _my_tool_completion >/dev/null; then") {
+		t.Fatalf("expected lazy script to check for completion function, got:\n%s", firstLazyText)
+	}
+	if !strings.Contains(firstLazyText, `source `+"\""+storedPath+"\"") {
+		t.Fatalf("expected lazy script to source stored completion script path, got:\n%s", firstLazyText)
+	}
+	if !strings.Contains(firstLazyText, "_my_tool_completion \"$@\"") {
+		t.Fatalf("expected lazy script to delegate to real completion function, got:\n%s", firstLazyText)
+	}
+	if !strings.Contains(firstLazyText, "complete -F _my_tool_completion_lazy my-tool") {
+		t.Fatalf("expected lazy script completion binding, got:\n%s", firstLazyText)
+	}
+
+	secondContent := strings.Join([]string{
+		`# @` + `shgen module my-tool My CLI`,
+		`# @` + `shgen command parent=my-tool status Show status`,
+	}, "\n")
+	if err := os.WriteFile(input, []byte(secondContent), 0o644); err != nil {
+		t.Fatalf("writing second input file: %v", err)
+	}
+
+	if err := os.WriteFile(lazyPath, []byte("stale-lazy-content"), 0o644); err != nil {
+		t.Fatalf("writing stale lazy file: %v", err)
+	}
+
+	secondStdout, err := captureStdout(t, func() error {
+		return runWithArgs(t, []string{"-s", "-O", input})
+	})
+	if err != nil {
+		t.Fatalf("second run() error = %v", err)
+	}
+	if !strings.Contains(secondStdout, "complete -F _my_tool_completion my-tool") {
+		t.Fatalf("expected generated script on stdout, got:\n%s", secondStdout)
+	}
+
+	secondStored, err := os.ReadFile(storedPath)
+	if err != nil {
+		t.Fatalf("reading second stored script: %v", err)
+	}
+	if strings.Contains(string(secondStored), "deploy") {
+		t.Fatalf("expected stored script to be overwritten, still found deploy command:\n%s", string(secondStored))
+	}
+	if !strings.Contains(string(secondStored), "status") {
+		t.Fatalf("expected overwritten stored script to include status command, got:\n%s", string(secondStored))
+	}
+
+	secondLazy, err := os.ReadFile(lazyPath)
+	if err != nil {
+		t.Fatalf("reading second lazy stored script: %v", err)
+	}
+	secondLazyText := string(secondLazy)
+	if strings.Contains(secondLazyText, "stale-lazy-content") {
+		t.Fatalf("expected lazy script to be overwritten, still found stale content:\n%s", secondLazyText)
+	}
+	if !strings.Contains(secondLazyText, "complete -F _my_tool_completion_lazy my-tool") {
+		t.Fatalf("expected overwritten lazy script completion binding, got:\n%s", secondLazyText)
 	}
 }

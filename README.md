@@ -13,6 +13,7 @@ Usage:
 
 Available arguments:
    --output, -o (Write completion output to a file instead of stdout)
+    --store, -O (Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh})
   --process, -p (Override the program name used in the generated completion script)
   --grouped, -g (Group completion output into completion types)
    --silent, -s (Suppress top-level legend output to stderr)
@@ -191,6 +192,11 @@ sh-gen -p my-tool -o my-tool-completion.bash my-tool.sh
 source my-tool-completion.bash
 my-tool # <TAB><TAB>
 ```
+
+When using `--store` / `-O`, sh-gen writes two files under `~/.config/t-l3/sh-gen/`:
+
+- `[name].comp.sh`: full generated completion script
+- `[name].lazycomp.sh`: lightweight wrapper that checks whether the real completion function is loaded, sources `[name].comp.sh` if needed, then delegates to that function
 
 See [`example.txt`](.dev/example.txt) for a comprehensive multi-command annotation file modelling a fictional `sh-gen-test` CLI, suitable for manual testing of completion behaviour.
 

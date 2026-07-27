@@ -8,6 +8,7 @@
 // Flags:
 //
 //	-o, --output  <file>   Write output to <file> instead of stdout.
+//	-O, --store            Store output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}.
 //	-p, --process <name>   Override the program name used in the completion script.
 //	-g, --grouped          Prefix command and argument groups with semantic labels.
 //	-s, --silent           Do not print top-level legend output to stderr after generation.
@@ -15,6 +16,7 @@
 //
 // @shgen module sh-gen Scans source files for @shgen annotations and generates bash completion scripts
 // @shgen argument parent=sh-gen complete=file alternate=-o --output  Write completion output to a file instead of stdout
+// @shgen argument parent=sh-gen               alternate=-O --store   Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}
 // @shgen argument parent=sh-gen complete=none alternate=-p --process Override the program name used in the generated completion script
 // @shgen argument parent=sh-gen               alternate=-g --grouped Group completion output into completion types
 // @shgen argument parent=sh-gen               alternate=-s --silent  Suppress top-level legend output to stderr
@@ -26,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -44,6 +47,7 @@ func main() {
 func run() error {
 	var (
 		outputFile     string
+		storeOutput    bool
 		programName    string
 		semanticGroups bool
 		silent         bool
@@ -51,6 +55,8 @@ func run() error {
 
 	flag.StringVar(&outputFile, "output", "", "Write output to `file` instead of stdout")
 	flag.StringVar(&outputFile, "o", outputFile, "See -output `file`")
+	flag.BoolVar(&storeOutput, "store", false, "Store output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}")
+	flag.BoolVar(&storeOutput, "O", storeOutput, "See --store")
 	flag.StringVar(&programName, "process", "", "Override the program `name` used in the completion script")
 	flag.StringVar(&programName, "p", programName, "See -process `name`")
 	flag.BoolVar(&semanticGroups, "grouped", false, "Group completion output into completion types")
@@ -117,6 +123,12 @@ func run() error {
 		return fmt.Errorf("writing generated completion script: %w", err)
 	}
 
+	if storeOutput {
+		if err := storeGeneratedScript(generated.String()); err != nil {
+			return fmt.Errorf("storing generated completion script: %w", err)
+		}
+	}
+
 	if !silent {
 		if err := printTopLevelLegend(os.Stderr, generated.String()); err != nil {
 			return fmt.Errorf("printing top-level legend: %w", err)
@@ -127,6 +139,56 @@ func run() error {
 }
 
 var completeBindingRE = regexp.MustCompile(`(?m)^complete -F ([^[:space:]]+) ([^[:space:]]+)\s*$`)
+
+func storeGeneratedScript(script string) error {
+	completionFunc, program, err := discoverCompletionBinding(script)
+	if err != nil {
+		return err
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolving user home directory: %w", err)
+	}
+
+	storeDir := filepath.Join(home, ".config", "t-l3", "sh-gen")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		return fmt.Errorf("creating store directory %s: %w", storeDir, err)
+	}
+
+	storePath := filepath.Join(storeDir, program+".comp.sh")
+	if err := os.WriteFile(storePath, []byte(script), 0o644); err != nil {
+		return fmt.Errorf("writing store file %s: %w", storePath, err)
+	}
+
+	lazyPath := filepath.Join(storeDir, program+".lazycomp.sh")
+	lazyScript := buildLazyCompletionScript(program, completionFunc, storePath)
+	if err := os.WriteFile(lazyPath, []byte(lazyScript), 0o644); err != nil {
+		return fmt.Errorf("writing lazy store file %s: %w", lazyPath, err)
+	}
+
+	return nil
+}
+
+func discoverCompletionBinding(script string) (completionFunc string, program string, err error) {
+	match := completeBindingRE.FindStringSubmatch(script)
+	if len(match) != 3 {
+		return "", "", fmt.Errorf("could not discover completion binding in generated script")
+	}
+	return match[1], match[2], nil
+}
+
+func buildLazyCompletionScript(program string, completionFunc string, completionPath string) string {
+	lazyCompletionFunc := completionFunc + "_lazy"
+	return fmt.Sprintf(`%s() {
+	if ! declare -F %s >/dev/null; then
+		source %q
+	fi
+	%s "$@"
+}
+complete -F %s %s
+`, lazyCompletionFunc, completionFunc, completionPath, completionFunc, lazyCompletionFunc, program)
+}
 
 func printTopLevelLegend(dst *os.File, script string) error {
 	match := completeBindingRE.FindStringSubmatch(script)
