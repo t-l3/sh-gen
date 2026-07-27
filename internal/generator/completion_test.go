@@ -182,6 +182,62 @@ func TestGenerate_CommandComplete_OverridesWildcard(t *testing.T) {
 	}
 }
 
+func TestGenerate_CommandComplete_AfterFlagValue_OverridesWildcard(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+	root.Commands = []*model.Command{
+		{
+			Name:        "deploy",
+			Description: "deploy app",
+			Complete:    "targets",
+			Arguments: []*model.Argument{
+				{
+					Name:      "--namespace",
+					Alternate: "-n",
+				},
+			},
+		},
+	}
+	root.Wildcard = &model.Wildcard{
+		Complete: "wild-values",
+	}
+
+	tree.Validations["targets"] = &model.Validation{
+		Name:   "targets",
+		Script: `echo -e "api\nworker\nweb"`,
+	}
+	tree.Validations["wild-values"] = &model.Validation{
+		Name:   "wild-values",
+		Script: `echo "__wild__"`,
+	}
+
+	tree.Externals = []string{bashCompWordsHelper()}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	replies := runCompletion(t, scriptPath, "k deploy -n kube-public ", "k deploy -n kube-public \"\"", 4)
+
+	got := strings.Join(replies, ",")
+	if !strings.Contains(got, "api") || !strings.Contains(got, "worker") || !strings.Contains(got, "web") {
+		t.Fatalf("expected command completion values after flag value, got: %#v", replies)
+	}
+	if strings.Contains(got, "__wild__") {
+		t.Fatalf("expected wildcard completion to be bypassed when command complete is set after flag value, got: %#v", replies)
+	}
+}
+
 func TestGenerate_ModuleComplete_OverridesWildcard_ForFirstPositionalArg(t *testing.T) {
 	tree := model.NewTree()
 

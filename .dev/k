@@ -26,6 +26,7 @@ k() {
     return 0
   fi
 
+  # @shgen external  _k_wrapper_current_namespace() { local found=0 i word; _K_NS=(); for ((i=1; i<=COMP_CWORD; i++)); do word="${COMP_WORDS[i]}"; if [[ "$found" -eq 1 ]]; then [[ -n "$word" ]] && _K_NS=("-n" "$word"); return 0; fi; if [[ "$word" == "-n" || "$word" == "--namespace" ]]; then found=1; fi; done; }
   while [[ "$1" ]]; do
     case "$1" in
       # @shgen validation kube-ns                                                             bash -c 'kubectl get namespaces -o custom-columns=NAME:.metadata.name --no-headers'
@@ -37,9 +38,9 @@ k() {
           return $?
         fi
         ;;
-      # @shgen validation kube-secrets                                                        bash -c 'kubectl get secrets -o custom-columns=NAME:.metadata.name --no-headers'
+      # @shgen validation kube-secrets                                                        local _K_NS=(); _k_wrapper_current_namespace; kubectl get secrets "${_K_NS[@]}" -o custom-columns=NAME:.metadata.name --no-headers
       # @shgen validation kube-secrets-static                                                 bash -c 'echo -e "exampleSecret\nmySecret\ntestSecret"'
-      # @shgen validation kube-secret-keys                                                    bash -c 'kubectl get secrets -o json | jq -r ".items[].data | keys[]"'
+      # @shgen validation kube-secret-keys                                                    local _K_NS=(); _k_wrapper_current_namespace; kubectl get secrets "${_K_NS[@]}" -o json | jq -r ".items[].data | keys[]"
       # @shgen validation kube-secret-keys-static                                             bash -c 'echo -e "key1\npublic.crt\nprivate.key"; exit 0;'
       # @shgen command                  complete=kube-secrets                    secret       Print the string value for each key in a given secret or for the provided key
       # @shgen argument  parent=secret  complete=kube-secret-keys  alternate=-k  --key        Specific key from the given secret

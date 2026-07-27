@@ -116,7 +116,41 @@ const bashTemplate = `
 
             # Explicit completion override for command value.
             {{- if ne .CommandComplete "" }}
-            if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && "$prev" == "{{ .Name }}" && "$cur" != -* ]]; then
+            local __shgen_allow_command_complete=0
+            if [[ "$prev" == "{{ .Name }}" ]]; then
+                __shgen_allow_command_complete=1
+            else
+                # Also allow command value completion when no positional value has
+                # been provided yet (e.g. after flags like: cmd -n ns <TAB>).
+                local __shgen_value_seen=0
+                local __shgen_expect_value=0
+                local __shgen_cmd_start=$(({{ pathWordCount $node.Path }} + 1))
+                for (( i=__shgen_cmd_start; i < cword; i++ )); do
+                    local __shgen_w="${words[i]}"
+                    if [[ $__shgen_expect_value -eq 1 ]]; then
+                        __shgen_expect_value=0
+                        continue
+                    fi
+                    case "$__shgen_w" in
+                        {{- range .Arguments }}
+                        {{- if ne .Name "" }}
+                        "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
+                            __shgen_expect_value=1
+                            ;;
+                        {{- end }}
+                        {{- end }}
+                        -*) ;;
+                        *)
+                            __shgen_value_seen=1
+                            break
+                            ;;
+                    esac
+                done
+                if [[ $__shgen_value_seen -eq 0 ]]; then
+                    __shgen_allow_command_complete=1
+                fi
+            fi
+            if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_allow_command_complete -eq 1 && "$cur" != -* ]]; then
                 {{- if eq (completionKind .CommandComplete) "file" }}
                 compopt -o filenames 2>/dev/null
                 COMPREPLY=( $(compgen -f -- "$cur") )
