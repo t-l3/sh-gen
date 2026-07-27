@@ -64,6 +64,7 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 		case annotation.KindArgument:
 			arg := &Argument{
 				Name:        ann.Name,
+				Position:    ann.Position,
 				Alternate:   ann.Alternate,
 				Description: ann.Description,
 				Validate:    ann.Validate,

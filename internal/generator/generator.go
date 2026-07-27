@@ -3,6 +3,7 @@ package generator
 import (
 	"bytes"
 	"io"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -164,6 +165,21 @@ const bashTemplate = `
                         ((__shgen_ctx_positional_index++))
                         local __shgen_ctx_pos_var="_K_COM_ARG${__shgen_ctx_positional_index}"
                         printf -v "$__shgen_ctx_pos_var" '%s' "$__shgen_ctx_word"
+                        {{- range .Arguments }}
+                        {{- if and (gt .Position 0) (ne .Name "") }}
+                        if [[ $__shgen_ctx_positional_index -eq {{ .Position }} ]]; then
+                            __shgen_ctx_key="{{ .Name }}"
+                            __shgen_ctx_key="${__shgen_ctx_key#--}"
+                            __shgen_ctx_key="${__shgen_ctx_key#-}"
+                            __shgen_ctx_key="${__shgen_ctx_key^^}"
+                            __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+                            if [[ -n "$__shgen_ctx_key" ]]; then
+                                __shgen_ctx_var="_K_ARG_${__shgen_ctx_key}"
+                                printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
+                            fi
+                        fi
+                        {{- end }}
+                        {{- end }}
                         ;;
                 esac
             done
@@ -191,6 +207,29 @@ const bashTemplate = `
                 {{- end }}
                 {{- end }}
             esac
+
+            # Explicit completion override for positional argument values.
+            local __shgen_target_position=$((__shgen_ctx_positional_index + 1))
+            {{- range .Arguments }}
+            {{- $argComplete := argCompletion . }}
+            {{- if and (gt .Position 0) (ne $argComplete "") }}
+            if [[ $__shgen_ctx_expect_value -eq 0 && "$cur" != -* && $__shgen_target_position -eq {{ .Position }} ]]; then
+                {{- if eq (completionKind $argComplete) "file" }}
+                compopt -o filenames 2>/dev/null
+                COMPREPLY=( $(compgen -f -- "$cur") )
+                {{- else if eq (completionKind $argComplete) "none" }}
+                COMPREPLY=()
+                {{- else if eq (completionKind $argComplete) "function" }}
+                local __shgen_values="$({{ completionFunc $argComplete }} 2>/dev/null)"
+                COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+                {{- if completionNoSpace $argComplete }}
+                compopt -o nospace 2>/dev/null
+                {{- end }}
+                {{- end }}
+                return 0
+            fi
+            {{- end }}
+            {{- end }}
 
             # Explicit completion override for command value.
             {{- if ne .CommandComplete "" }}
@@ -304,6 +343,7 @@ const bashTemplate = `
             {{- if .Arguments }}
             {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable arguments:"; fi{{ end }}
             {{- range .Arguments }}
+            {{- if or (ne .Name "") (ne .Alternate "") }}
             local __shgen_arg_matches=0
             local __shgen_name_matches=0
             local __shgen_alt_matches=0
@@ -330,8 +370,9 @@ const bashTemplate = `
                     printf "\n"
                     __shgen_printed=1
                 fi
-                printf "%${max_opt_width}s\t%s\n" "{{ .Name }}{{ if .Alternate }}, {{ .Alternate }}{{ end}}" "({{ .Description }})"
+                printf "%${max_opt_width}s\t%s\n" "{{ argDisplayLabel . }}" "({{ .Description }})"
             fi
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- if .Wildcard }}
@@ -667,6 +708,9 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 			}
 			return len(strings.Fields(trimmed))
 		},
+		"argDisplayLabel": func(a *model.Argument) string {
+			return argDisplayLabel(a)
+		},
 	}
 
 	data.MaxOptWidth = calculateMaxOptWidth(data.Nodes)
@@ -728,10 +772,7 @@ func calculateMaxOptWidth(nodes []node) int {
 			}
 		}
 		for _, arg := range n.Arguments {
-			label := arg.Name
-			if strings.TrimSpace(arg.Alternate) != "" {
-				label = label + ", " + arg.Alternate
-			}
+			label := argDisplayLabel(arg)
 			if l := len(label); l > maxWidth {
 				maxWidth = l
 			}
@@ -742,6 +783,28 @@ func calculateMaxOptWidth(nodes []node) int {
 	maxWidth += 2
 
 	return maxWidth
+}
+
+func argDisplayLabel(arg *model.Argument) string {
+	if arg == nil {
+		return ""
+	}
+
+	label := strings.TrimSpace(arg.Name)
+	alt := strings.TrimSpace(arg.Alternate)
+
+	if label == "" && alt == "" && arg.Position > 0 {
+		return "(" + strconv.Itoa(arg.Position) + ")"
+	}
+
+	if alt != "" {
+		if label == "" {
+			return alt
+		}
+		return label + ", " + alt
+	}
+
+	return label
 }
 
 func sanitizeFuncName(s string) string {

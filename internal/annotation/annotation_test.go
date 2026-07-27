@@ -6,7 +6,7 @@ import (
 )
 
 func TestScan_ModuleComplete_ParsesValidationOption(t *testing.T) {
-	r := strings.NewReader(`# @`+`shgen module complete=src-ls src A helper function to cd to src repos`)
+	r := strings.NewReader(`# @` + `shgen module complete=src-ls src A helper function to cd to src repos`)
 
 	anns, err := Scan(r, "test")
 	if err != nil {
@@ -32,7 +32,7 @@ func TestScan_ModuleComplete_ParsesValidationOption(t *testing.T) {
 }
 
 func TestScan_ValidationOptionNoSpace_IsParsed(t *testing.T) {
-	r := strings.NewReader(`# @`+`shgen validation option=nospace src-ls ls -1d "$HOME"/src/"$cur"*/`)
+	r := strings.NewReader(`# @` + `shgen validation option=nospace src-ls ls -1d "$HOME"/src/"$cur"*/`)
 
 	anns, err := Scan(r, "test")
 	if err != nil {
@@ -51,5 +51,34 @@ func TestScan_ValidationOptionNoSpace_IsParsed(t *testing.T) {
 	}
 	if !ann.ValidationNoSpace {
 		t.Fatalf("expected ValidationNoSpace=true when option=nospace is present")
+	}
+}
+
+func TestScan_ArgumentPositionalIndex_IsParsed(t *testing.T) {
+	r := strings.NewReader(`# @` + `shgen argument ?parent=secret ?complete=secret-keys ?position=2 key Secret key name`)
+
+	anns, err := Scan(r, "test")
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(anns) != 1 {
+		t.Fatalf("expected exactly one annotation, got %d", len(anns))
+	}
+
+	ann := anns[0]
+	if ann.Kind != KindArgument {
+		t.Fatalf("expected KindArgument, got %q", ann.Kind)
+	}
+	if ann.Parent != "secret" {
+		t.Fatalf("expected parent secret, got %q", ann.Parent)
+	}
+	if ann.Position != 2 {
+		t.Fatalf("expected positional index 2, got %d", ann.Position)
+	}
+	if ann.Complete != "secret-keys" {
+		t.Fatalf("expected complete secret-keys, got %q", ann.Complete)
+	}
+	if ann.Name != "key" {
+		t.Fatalf("expected name key for positional argument, got %q", ann.Name)
 	}
 }

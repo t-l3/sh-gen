@@ -415,6 +415,10 @@ func TestGenerate_ValidationContextVariables_AvailableForArgumentCompletion(t *t
 					Alternate: "-n",
 				},
 				{
+					Name:     "secret",
+					Position: 1,
+				},
+				{
 					Name:      "--key",
 					Alternate: "-k",
 					Complete:  "ctx-values",
@@ -425,10 +429,11 @@ func TestGenerate_ValidationContextVariables_AvailableForArgumentCompletion(t *t
 
 	tree.Validations["ctx-values"] = &model.Validation{
 		Name: "ctx-values",
-		Script: `printf "ns:%s\ncmd:%s\narg1:%s\n" \
+		Script: `printf "ns:%s\ncmd:%s\narg1:%s\nargsecret:%s\n" \
 "$_K_ARG_NAMESPACE" \
 "$_K_COM_SECRET" \
-"$_K_COM_ARG1"`,
+"$_K_COM_ARG1" \
+"$_K_ARG_SECRET"`,
 	}
 
 	tree.Externals = []string{bashCompWordsHelper()}
@@ -462,5 +467,8 @@ func TestGenerate_ValidationContextVariables_AvailableForArgumentCompletion(t *t
 	}
 	if !strings.Contains(got, "arg1:mysecret") {
 		t.Fatalf("expected positional _K_COM_ARG1 to be available in validation script, got: %#v", replies)
+	}
+	if !strings.Contains(got, "argsecret:mysecret") {
+		t.Fatalf("expected positional argument variable _K_ARG_SECRET to be available in validation script, got: %#v", replies)
 	}
 }

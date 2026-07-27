@@ -4,7 +4,7 @@
 // Annotation syntax (each annotation is an end-of-line token beginning with @shgen):
 //   - module   ?parent=[parent] ?complete=[validation]  [name] [description]
 //   - command  ?parent=[parent]                         [name] [description]
-//   - argument ?parent=[parent] ?validate=[validation] ?[name] [description]
+//   - argument ?parent=[parent] ?validate=[validation] ?position=[index] [name] [description]
 //   - validation [name] [script]
 //   - external   [script]
 package annotation
@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -35,7 +36,7 @@ type Annotation struct {
 
 	// Module / Command / Argument fields
 	Parent      string // optional ?parent=[parent]
-	Name        string // name token (may be empty for argument with no flag name)
+	Name        string // required name token
 	Description string // remainder of text after name
 
 	// Module-specific
@@ -48,11 +49,12 @@ type Annotation struct {
 	Alternate string // optional ?alternate=[name]
 	Validate  string // optional ?validate=[validation]
 	Complete  string // optional ?complete=[file|none|<validation-name>]
+	Position  int    // optional ?position=[index] (1-based positional argument index)
 
 	// Validation-specific
-	ValidationName   string // name for validation block
-	ValidationScript string // script body for validation block
-	ValidationNoSpace bool  // optional ?option=nospace
+	ValidationName    string // name for validation block
+	ValidationScript  string // script body for validation block
+	ValidationNoSpace bool   // optional ?option=nospace
 
 	// External-specific
 	ExternalScript string // script body for external block
@@ -81,6 +83,9 @@ var completeRe = regexp.MustCompile(`\??complete=(\S+)`)
 
 // optionRe matches option=[value] (no spaces in value).
 var optionRe = regexp.MustCompile(`\??option=(\S+)`)
+
+// positionRe matches position=[value] (1-based positional argument index).
+var positionRe = regexp.MustCompile(`\??position=(\d+)`)
 
 // masqueradeRe matches masquerade=[value] (no spaces in value).
 var masqueradeRe = regexp.MustCompile(`\??masquerade=(\S+)`)
@@ -190,7 +195,8 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 //   - ?validate=[validation]
 //   - ?complete=[value]
 //   - ?alternate=[name]
-//   - ?[name] (The name is optional (a bare argument with no flag).)
+//   - ?position=[index] (optional 1-based positional index)
+//   - [name] (required argument name)
 //   - [description]
 func parseArgument(raw string) (Annotation, error) {
 	ann := Annotation{Kind: KindArgument}
@@ -219,16 +225,27 @@ func parseArgument(raw string) (Annotation, error) {
 		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 	}
 
-	// Remaining is: ?[name] [description]
-	// We treat the first whitespace-separated token as the name if it exists,
-	// and everything after as description.
-	fields := strings.SplitN(strings.TrimSpace(raw), " ", 2)
-	if len(fields) > 0 && fields[0] != "" {
-		ann.Name = fields[0]
-		if len(fields) > 1 {
-			ann.Description = strings.TrimSpace(fields[1])
+	// Extract optional ?position=...
+	if m := positionRe.FindStringSubmatchIndex(raw); m != nil {
+		n, err := strconv.Atoi(raw[m[2]:m[3]])
+		if err != nil || n <= 0 {
+			return Annotation{}, fmt.Errorf("invalid positional argument index %q", raw[m[2]:m[3]])
 		}
+		ann.Position = n
+		raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 	}
+
+	// Remaining is: [name] [description]
+	fields := strings.Fields(strings.TrimSpace(raw))
+	if len(fields) == 0 {
+		return Annotation{}, fmt.Errorf("argument annotation requires a name")
+	}
+
+	ann.Name = fields[0]
+	if len(fields) > 1 {
+		ann.Description = strings.Join(fields[1:], " ")
+	}
+
 	return ann, nil
 }
 

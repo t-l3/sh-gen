@@ -15,7 +15,7 @@
 //
 // @shgen module sh-gen Scans source files for @shgen annotations and generates bash completion scripts
 // @shgen argument parent=sh-gen complete=file alternate=-o --output  Write completion output to a file instead of stdout
-// @shgen argument parent=sh-gen               alternate=-p --process Override the program name used in the generated completion script
+// @shgen argument parent=sh-gen complete=none alternate=-p --process Override the program name used in the generated completion script
 // @shgen argument parent=sh-gen               alternate=-g --grouped Group completion output into completion types
 // @shgen argument parent=sh-gen               alternate=-s --silent  Suppress top-level legend output to stderr
 package main

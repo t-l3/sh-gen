@@ -4,8 +4,11 @@ package model
 
 // Argument represents a CLI flag or positional argument.
 type Argument struct {
-	// Name is the flag name, e.g. "--config". May be empty for positional arguments.
+	// Name is the argument name, e.g. "--config" for flags or "secret" for positional args.
 	Name string
+	// Position is the positional index (1-based) after the parent command/module.
+	// When > 0, this argument is treated as positional (e.g. position=1).
+	Position int
 	// Alternate flag name, e.g. "-c"
 	Alternate string
 	// Description is the human-readable description.
@@ -35,10 +38,10 @@ type Module struct {
 	Parent      string
 	// Complete is an optional validation name used to complete the module's
 	// first positional value (e.g. `src <repo>`).
-	Complete string
-	Commands    []*Command
-	Arguments   []*Argument
-	SubModules  []*Module
+	Complete   string
+	Commands   []*Command
+	Arguments  []*Argument
+	SubModules []*Module
 	// Wildcard provides dynamic completions for unknown subcommands (e.g., kubectl passthrough).
 	Wildcard *Wildcard
 }

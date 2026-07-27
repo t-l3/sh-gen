@@ -25,9 +25,9 @@ Annotations can appear in any file — shell scripts, Go source, Python, plain t
 Annotation arguments preceded with a `?` are optional:
 
 ```
-@shgen module    ?parent=[parent]  ?complete=[mode]                    [name]  [description]
-@shgen command   ?parent=[parent]                                      [name]  [description]
-@shgen argument  ?parent=[parent]  ?complete=[mode] ?alternate=[name] ?[name]  [description]
+@shgen module    ?parent=[parent]  ?complete=[mode]                                        [name]  [description]
+@shgen command   ?parent=[parent]                                                          [name]  [description]
+@shgen argument  ?parent=[parent]  ?complete=[mode]  ?alternate=[name]  ?position=[index]  [name]  [description]
 @shgen wildcard  ?parent=[parent]  complete=[validation] ?masquerade=[command]
 
 @shgen validation  [name]  [script]
@@ -60,13 +60,15 @@ A command is a subcommand of a module. Attach it to a module with `parent=`.
 
 ### `argument`
 
-An argument is a flag or positional parameter. It can be attached to a command or module with `parent=`. The flag name (e.g. `--output`) is optional — omit it for positional arguments.
+An argument is a flag or positional parameter. It can be attached to a command or module with `parent=`. The argument `name` is required for both flag and positional arguments to uniquely identify the argument's value for [context variables](#validation-context-variables).
 
-You can specify an alternate or short name for the flag using `alternate=`.
+You can specify an alternate or short name for named flags using `alternate=`.
 
 ```
 @shgen argument parent=deploy alternate=-t --tag  Image tag to deploy
 ```
+
+For positional arguments, set `position=<index>` (1-based) to indicate which positional token the argument definition represents.
 
 Arguments support custom completion values ("validation") by setting the optional `complete=` option.
 See [`validation`](#validation) for info on usage of the `complete=` option.
@@ -77,6 +79,7 @@ Example arguments:
 @shgen argument parent=deploy complete=image-tags  --tag     Image tag to deploy
 @shgen argument parent=deploy complete=file        --values  Path to a values file
 @shgen argument parent=deploy complete=none        --secret  A secret value (no completion)
+@shgen argument parent=deploy position=1           service   Service name positional argument
 ```
 
 ### `validation`
@@ -110,8 +113,9 @@ Generated completion exposes parsed command/argument context to validation scrip
 
 Available variable patterns:
 
-- `_K_ARG_<NAME>`: resolved value for known flags in the current node  
+- `_K_ARG_<NAME>`: resolved value for known arguments in the current node (flags and positional arguments with `position=`)  
   - For an `argument` annotation with name `--namespace` -> `_K_ARG_NAMESPACE`
+  - For an `argument` annotation with `name=secret` and `position=1` -> `_K_ARG_SECRET`
 - `_K_COM_ARG1`, `_K_COM_ARG2`, ...: positional values after the matched node path  
   - For the secret name in `k secret my-secret ...` -> `_K_COM_ARG1`
 
