@@ -2,6 +2,8 @@
 
 **sh-gen** is a bash completion generator that scans source files, scripts, or plain annotation files for `@shgen` annotations, and produces ready-to-source bash completion scripts from the CLI structure they describe.
 
+![Demo of generating completion for a kubectl wrapper using sh-gen](.doc/sh-gen_k.gif)
+
 ## Usage
 
 ```
