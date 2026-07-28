@@ -878,3 +878,67 @@ printf '%s\n' "${COMPREPLY[@]}"
 		t.Fatalf("expected repeatable --label to remain suggested, got %#v", repeatable)
 	}
 }
+
+func TestGenerate_ValidationContextVariables_UseProgramNamePrefix(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("dev")
+	root.Parent = ""
+	root.Commands = []*model.Command{
+		{
+			Name: "secret",
+			Arguments: []*model.Argument{
+				{Name: "--namespace", Alternate: "-n"},
+				{Name: "secret", Position: 1},
+			},
+		},
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "dev"}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if !strings.Contains(script, `"_DEV_COM_${__shgen_ctx_key}"`) {
+		t.Fatalf("expected command context variables to use _DEV_COM_ prefix, got:\n%s", script)
+	}
+	if !strings.Contains(script, `"_DEV_ARG_${__shgen_ctx_key}"`) {
+		t.Fatalf("expected argument context variables to use _DEV_ARG_ prefix, got:\n%s", script)
+	}
+	if !strings.Contains(script, `"_DEV_COM_ARG${__shgen_ctx_positional_index}"`) {
+		t.Fatalf("expected positional context variables to use _DEV_COM_ARG prefix, got:\n%s", script)
+	}
+	if strings.Contains(script, "_K_COM_") || strings.Contains(script, "_K_ARG_") {
+		t.Fatalf("expected no hardcoded _K_ context variables for ProgramName=dev, got:\n%s", script)
+	}
+}
+
+func TestGenerate_ValidationContextVariables_AreLocal(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("dev")
+	root.Parent = ""
+	root.Commands = []*model.Command{
+		{
+			Name: "secret",
+			Arguments: []*model.Argument{
+				{Name: "--namespace", Alternate: "-n"},
+				{Name: "secret", Position: 1},
+			},
+		},
+	}
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{ProgramName: "dev"}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	if strings.Count(script, `local "$__shgen_ctx_var"`) < 4 {
+		t.Fatalf("expected dynamic _[PROGRAM]_ARG_/_[PROGRAM]_COM_ variables to be declared local before assignment, got:\n%s", script)
+	}
+	if !strings.Contains(script, `local "$__shgen_ctx_pos_var"`) {
+		t.Fatalf("expected positional _[PROGRAM]_COM_ARG* variable to be declared local before assignment, got:\n%s", script)
+	}
+}

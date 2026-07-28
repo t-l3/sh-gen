@@ -144,9 +144,9 @@ _{{ .FuncName }}_print_columns() {
             {{- end }}
 
             # Populate context variables for validation scripts.
-            # - _K_COM_<NAME> for matched command/module path tokens
-            # - _K_ARG_<NAME> for known argument values in this node
-            # - _K_COM_ARG1, _K_COM_ARG2, ... for positional values after this node path
+            # - _{{ toUpper $.FuncName }}_COM_<NAME> for matched command/module path tokens
+            # - _{{ toUpper $.FuncName }}_ARG_<NAME> for known argument values in this node
+            # - _{{ toUpper $.FuncName }}_COM_ARG1, _{{ toUpper $.FuncName }}_COM_ARG2, ... for positional values after this node path
             local __shgen_ctx_start=$(({{ pathWordCount $node.Path }} + 1))
             local __shgen_ctx_expect_value=0
             local __shgen_ctx_target=""
@@ -157,7 +157,8 @@ _{{ .FuncName }}_print_columns() {
             for __shgen_ctx_part in $normalized_context; do
                 local __shgen_ctx_key="${__shgen_ctx_part^^}"
                 __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
-                local __shgen_ctx_var="_K_COM_${__shgen_ctx_key}"
+                local __shgen_ctx_var="_{{ toUpper $.FuncName }}_COM_${__shgen_ctx_key}"
+                local "$__shgen_ctx_var"
                 printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_part"
             done
 
@@ -172,7 +173,8 @@ _{{ .FuncName }}_print_columns() {
                         __shgen_ctx_key="${__shgen_ctx_key^^}"
                         __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
                         if [[ -n "$__shgen_ctx_key" ]]; then
-                            __shgen_ctx_var="_K_ARG_${__shgen_ctx_key}"
+                            __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
+                            local "$__shgen_ctx_var"
                             printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
                         fi
                     fi
@@ -201,7 +203,8 @@ _{{ .FuncName }}_print_columns() {
                                 __shgen_ctx_key="${__shgen_ctx_key^^}"
                                 __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
                                 if [[ -n "$__shgen_ctx_key" ]]; then
-                                    __shgen_ctx_var="_K_ARG_${__shgen_ctx_key}"
+                                    __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
+                                    local "$__shgen_ctx_var"
                                     printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_value"
                                 fi
                                 ;;
@@ -215,7 +218,8 @@ _{{ .FuncName }}_print_columns() {
                         ;;
                     *)
                         ((__shgen_ctx_positional_index++))
-                        local __shgen_ctx_pos_var="_K_COM_ARG${__shgen_ctx_positional_index}"
+                        local __shgen_ctx_pos_var="_{{ toUpper $.FuncName }}_COM_ARG${__shgen_ctx_positional_index}"
+                        local "$__shgen_ctx_pos_var"
                         printf -v "$__shgen_ctx_pos_var" '%s' "$__shgen_ctx_word"
                         {{- range .Arguments }}
                         {{- if and (gt .Position 0) (ne .Name "") }}
@@ -226,7 +230,8 @@ _{{ .FuncName }}_print_columns() {
                             __shgen_ctx_key="${__shgen_ctx_key^^}"
                             __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
                             if [[ -n "$__shgen_ctx_key" ]]; then
-                                __shgen_ctx_var="_K_ARG_${__shgen_ctx_key}"
+                                __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
+                                local "$__shgen_ctx_var"
                                 printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
                             fi
                         fi
@@ -833,6 +838,7 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 		"argDisplayLabel": func(a *model.Argument) string {
 			return argDisplayLabel(a)
 		},
+		"toUpper": strings.ToUpper,
 	}
 
 	data.MaxOptWidth = calculateMaxOptWidth(data.Nodes)
