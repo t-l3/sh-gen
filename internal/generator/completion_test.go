@@ -196,6 +196,7 @@ func TestGenerate_CommandComplete_AfterFlagValue_OverridesWildcard(t *testing.T)
 				{
 					Name:      "--namespace",
 					Alternate: "-n",
+					Complete:  "none",
 				},
 			},
 		},
@@ -548,6 +549,7 @@ func TestGenerate_ValidationContextVariables_AvailableForArgumentCompletion(t *t
 				{
 					Name:      "--namespace",
 					Alternate: "-n",
+					Complete:  "none",
 				},
 				{
 					Name:     "secret",

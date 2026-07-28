@@ -15,13 +15,14 @@
 //	-s, --silent           Suppress all non-error output (both script and legend output).
 //	-h, --help             Show this help message.
 //
-// @shgen module   complete=file                            sh-gen    Scans source files for @shgen annotations and generates bash completion scripts
-// @shgen argument parent=sh-gen complete=file alternate=-o --output  Write completion output to a file instead of stdout
-// @shgen argument parent=sh-gen               alternate=-i --install Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}
-// @shgen argument parent=sh-gen complete=none alternate=-n --name    Override the program name used in the generated completion script
-// @shgen argument parent=sh-gen               alternate=-g --grouped Group completion output into completion types
-// @shgen argument parent=sh-gen               alternate=-q --quiet   Suppress top-level legend output to stderr
-// @shgen argument parent=sh-gen               alternate=-s --silent  Suppress all non-error output (script + top-level legend)
+// @shgen module                                                          sh-gen  Scans source files for @shgen annotations and generates bash completion scripts
+// @shgen argument parent=sh-gen position=1 repeatable=true complete=file input   Input file(s) to scan for @shgen annotations
+// @shgen argument parent=sh-gen complete=file alternate=-o             --output  Write completion output to a file instead of stdout
+// @shgen argument parent=sh-gen               alternate=-i             --install Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh}
+// @shgen argument parent=sh-gen complete=none alternate=-n             --name    Override the program name used in the generated completion script
+// @shgen argument parent=sh-gen               alternate=-g             --grouped Group completion output into completion types
+// @shgen argument parent=sh-gen               alternate=-q             --quiet   Suppress top-level legend output to stderr
+// @shgen argument parent=sh-gen               alternate=-s             --silent  Suppress all non-error output (script + top-level legend)
 package main
 
 import (

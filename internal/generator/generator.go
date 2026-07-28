@@ -184,7 +184,8 @@ _{{ .FuncName }}_print_columns() {
 
                 case "$__shgen_ctx_word" in
                     {{- range .Arguments }}
-                    {{- if or (ne .Name "") (ne .Alternate "") }}
+                    {{- $argComplete := argCompletion . }}
+                    {{- if and (eq .Position 0) (ne $argComplete "") (or (ne .Name "") (ne .Alternate "")) }}
                     {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
                         __shgen_ctx_expect_value=1
                         __shgen_ctx_target="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
@@ -195,7 +196,8 @@ _{{ .FuncName }}_print_columns() {
                         __shgen_ctx_value="${__shgen_ctx_word#*=}"
                         case "${__shgen_ctx_word%%=*}" in
                             {{- range .Arguments }}
-                            {{- if or (ne .Name "") (ne .Alternate "") }}
+                            {{- $argComplete := argCompletion . }}
+                            {{- if and (eq .Position 0) (ne $argComplete "") (or (ne .Name "") (ne .Alternate "")) }}
                             {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
                                 __shgen_ctx_key="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
                                 __shgen_ctx_key="${__shgen_ctx_key#--}"
@@ -245,7 +247,7 @@ _{{ .FuncName }}_print_columns() {
             case "$prev" in
                 {{- range .Arguments }}
                 {{- $argComplete := argCompletion . }}
-                {{- if and (ne .Name "") (ne $argComplete "") }}
+                {{- if and (eq .Position 0) (ne .Name "") (ne $argComplete "") }}
                 "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
                     {{- if eq (completionKind $argComplete) "file" }}
                     compopt -o filenames 2>/dev/null
@@ -270,7 +272,17 @@ _{{ .FuncName }}_print_columns() {
             {{- range .Arguments }}
             {{- $argComplete := argCompletion . }}
             {{- if and (gt .Position 0) (ne $argComplete "") }}
-            if [[ $__shgen_ctx_expect_value -eq 0 && "$cur" != -* && $__shgen_target_position -eq {{ .Position }} ]]; then
+            local __shgen_positional_match=0
+            {{- if .Repeatable }}
+            if [[ $__shgen_target_position -ge {{ .Position }} ]]; then
+                __shgen_positional_match=1
+            fi
+            {{- else }}
+            if [[ $__shgen_target_position -eq {{ .Position }} ]]; then
+                __shgen_positional_match=1
+            fi
+            {{- end }}
+            if [[ $__shgen_ctx_expect_value -eq 0 && "$cur" != -* && $__shgen_positional_match -eq 1 ]]; then
                 {{- if eq (completionKind $argComplete) "file" }}
                 compopt -o filenames 2>/dev/null
                 COMPREPLY=( $(compgen -f -- "$cur") )
@@ -307,7 +319,8 @@ _{{ .FuncName }}_print_columns() {
                     fi
                     case "$__shgen_w" in
                         {{- range .Arguments }}
-                        {{- if ne .Name "" }}
+                        {{- $argComplete := argCompletion . }}
+                        {{- if and (eq .Position 0) (ne .Name "") (ne $argComplete "") }}
                         "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
                             __shgen_expect_value=1
                             ;;
@@ -413,7 +426,7 @@ _{{ .FuncName }}_print_columns() {
             local -a __shgen_argument_display=()
             {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable arguments:"; fi{{ end }}
             {{- range .Arguments }}
-            {{- if or (ne .Name "") (ne .Alternate "") }}
+            {{- if and (eq .Position 0) (or (ne .Name "") (ne .Alternate "")) }}
             local __shgen_arg_matches=0
             local __shgen_name_matches=0
             local __shgen_alt_matches=0
