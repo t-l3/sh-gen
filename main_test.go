@@ -113,7 +113,7 @@ func TestPrintTopLevelLegend_MissingBinding_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
+func TestRun_InstallFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpHome := filepath.Join(tmpDir, "home")
 	if err := os.MkdirAll(tmpHome, 0o755); err != nil {
@@ -132,7 +132,7 @@ func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	}
 
 	firstStdout, err := captureStdout(t, func() error {
-		return runWithArgs(t, []string{"-q", "--store", input})
+		return runWithArgs(t, []string{"-q", "--install", input})
 	})
 	if err != nil {
 		t.Fatalf("first run() error = %v", err)
@@ -182,7 +182,7 @@ func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	}
 
 	secondStdout, err := captureStdout(t, func() error {
-		return runWithArgs(t, []string{"-q", "-O", input})
+		return runWithArgs(t, []string{"-q", "-i", input})
 	})
 	if err != nil {
 		t.Fatalf("second run() error = %v", err)
@@ -215,7 +215,7 @@ func TestRun_StoreFlag_WritesToHomeConfigPathAndOverwrites(t *testing.T) {
 	}
 }
 
-func TestRun_SilentSuppressesStdoutButStoreStillWritesFiles(t *testing.T) {
+func TestRun_SilentSuppressesStdoutButInstallStillWritesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpHome := filepath.Join(tmpDir, "home")
 	if err := os.MkdirAll(tmpHome, 0o755); err != nil {
@@ -233,7 +233,7 @@ func TestRun_SilentSuppressesStdoutButStoreStillWritesFiles(t *testing.T) {
 	}
 
 	stdout, err := captureStdout(t, func() error {
-		return runWithArgs(t, []string{"-s", "--store", input})
+		return runWithArgs(t, []string{"-s", "--install", input})
 	})
 	if err != nil {
 		t.Fatalf("run() error = %v", err)

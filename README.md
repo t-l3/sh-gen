@@ -15,8 +15,8 @@ Usage:
 
 Available arguments:
    --output, -o (Write completion output to a file instead of stdout)
-    --store, -O (Store completion output in ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh})
-  --process, -p (Override the program name used in the generated completion script)
+  --install, -i (Install completion output to ~/.config/t-l3/sh-gen/{[name].comp.sh,[name].lazycomp.sh})
+  --name, -n (Override the program name used in the generated completion script)
   --grouped, -g (Group completion output into completion types)
     --quiet, -q (Suppress top-level legend output to stderr)
    --silent, -s (Suppress all non-error output (script + top-level legend))
@@ -191,7 +191,7 @@ Then wire passthrough behaviour with `validation` + `wildcard`:
 Generate and source the completion script (the root legend is printed to `stderr` by default, so `stdout` remains script-only and can be redirected/sourced safely):
 
 ```bash
-sh-gen -p my-tool -o my-tool-completion.bash my-tool.sh
+sh-gen -n my-tool -o my-tool-completion.bash my-tool.sh
 source my-tool-completion.bash
 my-tool # <TAB><TAB>
 ```
@@ -201,7 +201,7 @@ Output control flags:
 - `--quiet` / `-q`: suppress the root legend (`stderr`) while still emitting the completion script (`stdout` or `--output` file).
 - `--silent` / `-s`: suppress all non-error terminal output (both script output and legend output).
 
-When using `--store` / `-O`, sh-gen writes two files under `~/.config/t-l3/sh-gen/`:
+When using `--install` / `-i`, sh-gen writes two files under `~/.config/t-l3/sh-gen/`:
 
 - `[name].comp.sh`: full generated completion script
 - `[name].lazycomp.sh`: lightweight wrapper that checks whether the real completion function is loaded, sources `[name].comp.sh` if needed, then delegates to that function

@@ -401,6 +401,141 @@ func TestGenerate_NoSpaceOption_NotAppliedWithoutValidationFlag(t *testing.T) {
 	}
 }
 
+func TestGenerate_NestedModuleCommandSuggestions_AtChildContext(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+
+	clean := tree.GetOrCreateModule("clean")
+	clean.Parent = "k"
+
+	rpms := &model.Command{
+		Name:        "rpms",
+		Description: "clean rpm artifacts",
+	}
+	caches := &model.Command{
+		Name:        "caches",
+		Description: "clean cache artifacts",
+	}
+	clean.Commands = []*model.Command{rpms, caches}
+	root.SubModules = []*model.Module{clean}
+
+	tree.Externals = []string{bashCompWordsHelper()}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	replies := runCompletion(t, scriptPath, "k clean ", "k clean \"\"", 2)
+
+	got := strings.Join(replies, ",")
+	if !strings.Contains(got, "rpms") || !strings.Contains(got, "caches") {
+		t.Fatalf("expected nested child commands to be suggested under `k clean`, got: %#v", replies)
+	}
+}
+
+func TestGenerate_NestedSuggestions_IncludeChildModulesAndCommands(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+
+	clean := tree.GetOrCreateModule("clean")
+	clean.Parent = "k"
+
+	cache := tree.GetOrCreateModule("cache")
+	cache.Parent = "clean"
+
+	cleanCmd := &model.Command{
+		Name:        "rpms",
+		Description: "clean rpm artifacts",
+	}
+	clean.SubModules = []*model.Module{cache}
+	clean.Commands = []*model.Command{cleanCmd}
+	root.SubModules = []*model.Module{clean}
+
+	tree.Externals = []string{bashCompWordsHelper()}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	replies := runCompletion(t, scriptPath, "k clean ", "k clean \"\"", 2)
+
+	got := strings.Join(replies, ",")
+	if !strings.Contains(got, "cache") {
+		t.Fatalf("expected child module to be suggested under `k clean`, got: %#v", replies)
+	}
+	if !strings.Contains(got, "rpms") {
+		t.Fatalf("expected child command to be suggested under `k clean`, got: %#v", replies)
+	}
+}
+
+func TestGenerate_DeepNestedCommandSuggestions_AfterMultiplePathSegments(t *testing.T) {
+	tree := model.NewTree()
+
+	root := tree.GetOrCreateModule("k")
+	root.Parent = ""
+
+	devtool := tree.GetOrCreateModule("devtool")
+	devtool.Parent = "k"
+
+	clean := tree.GetOrCreateModule("clean")
+	clean.Parent = "devtool"
+
+	clean.Commands = []*model.Command{
+		{
+			Name:        "rpms",
+			Description: "remove rpm build artifacts",
+		},
+		{
+			Name:        "containers",
+			Description: "remove dev containers",
+		},
+	}
+
+	devtool.SubModules = []*model.Module{clean}
+	root.SubModules = []*model.Module{devtool}
+
+	tree.Externals = []string{bashCompWordsHelper()}
+
+	var out bytes.Buffer
+	err := Generate(&out, tree, Options{ProgramName: "k"})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "k_completion.sh")
+	if err := os.WriteFile(scriptPath, out.Bytes(), 0o644); err != nil {
+		t.Fatalf("writing generated script: %v", err)
+	}
+
+	replies := runCompletion(t, scriptPath, "k devtool clean ", "k devtool clean \"\"", 3)
+
+	got := strings.Join(replies, ",")
+	if !strings.Contains(got, "rpms") || !strings.Contains(got, "containers") {
+		t.Fatalf("expected deep nested commands to be suggested under `k devtool clean`, got: %#v", replies)
+	}
+}
+
 func TestGenerate_ValidationContextVariables_AvailableForArgumentCompletion(t *testing.T) {
 	tree := model.NewTree()
 

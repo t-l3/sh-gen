@@ -680,6 +680,9 @@ type templateData struct {
 func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 	programName := opts.ProgramName
 	if programName == "" {
+		programName = strings.TrimSpace(tree.FirstModuleName)
+	}
+	if programName == "" {
 		var rootNames []string
 		for _, m := range tree.Modules {
 			if m.Parent == "" && m.Name != "" {

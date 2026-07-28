@@ -556,7 +556,37 @@ func TestGenerate_DeterministicOutputAcrossMapInsertionOrder(t *testing.T) {
 	}
 }
 
-func TestGenerate_ProgramNameSelectionFromRootModules_IsDeterministic(t *testing.T) {
+func TestGenerate_ProgramNameSelectionFromFirstModuleName(t *testing.T) {
+	tree := model.NewTree()
+
+	alpha := tree.GetOrCreateModule("alpha")
+	alpha.Parent = ""
+	alpha.Description = "alpha root"
+
+	beta := tree.GetOrCreateModule("beta")
+	beta.Parent = ""
+	beta.Description = "beta root"
+
+	tree.FirstModuleName = "beta"
+
+	var out bytes.Buffer
+	if err := Generate(&out, tree, Options{}); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	script := out.String()
+	re := regexp.MustCompile(`complete -F _([a-zA-Z0-9_]+)_completion ([a-zA-Z0-9_\-]+)$`)
+	m := re.FindStringSubmatch(script)
+	if len(m) != 3 {
+		t.Fatalf("could not find final complete line in generated script:\n%s", script)
+	}
+
+	if m[2] != "beta" {
+		t.Fatalf("expected program name from FirstModuleName 'beta', got %q", m[2])
+	}
+}
+
+func TestGenerate_ProgramNameSelectionFromRootModules_IsDeterministicWhenFirstModuleMissing(t *testing.T) {
 	tree := model.NewTree()
 
 	alpha := tree.GetOrCreateModule("alpha")

@@ -7,6 +7,23 @@ import (
 	"github.com/t-l3/sh-gen/internal/annotation"
 )
 
+func TestBuild_FirstModuleName_TracksFirstModuleAnnotation(t *testing.T) {
+	anns := []annotation.Annotation{
+		{Kind: annotation.KindModule, Name: "beta"},
+		{Kind: annotation.KindModule, Name: "alpha"},
+		{Kind: annotation.KindModule, Parent: "beta", Name: "beta-child"},
+	}
+
+	tree, err := Build(anns)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	if tree.FirstModuleName != "beta" {
+		t.Fatalf("expected FirstModuleName to be first module annotation name 'beta', got %q", tree.FirstModuleName)
+	}
+}
+
 func TestBuild_ModuleComplete_IsWiredToModel(t *testing.T) {
 	anns := []annotation.Annotation{
 		{

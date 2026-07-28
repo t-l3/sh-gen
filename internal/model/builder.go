@@ -15,6 +15,9 @@ func Build(annotations []annotation.Annotation) (*Tree, error) {
 	// First pass: create all modules so parent references can be resolved.
 	for _, ann := range annotations {
 		if ann.Kind == annotation.KindModule {
+			if tree.FirstModuleName == "" && ann.Name != "" {
+				tree.FirstModuleName = ann.Name
+			}
 			m := tree.GetOrCreateModule(ann.Name)
 			m.Description = ann.Description
 			m.Parent = ann.Parent

@@ -4,7 +4,7 @@
 # Inspired by kubectl/docker multi-layer CLI patterns.
 #
 # Run:
-#   sh-gen -p sh-gen-test -o /tmp/sh-gen-test-completion.bash example.txt
+#   sh-gen -n sh-gen-test -o /tmp/sh-gen-test-completion.bash example.txt
 #   source /tmp/sh-gen-test-completion.bash
 #   sh-gen-test <TAB><TAB>
 #

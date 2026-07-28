@@ -1,1 +1,1 @@
-. <(go run . -g -p sh-gen-test $(find . -iname example.txt)) ; sh-gen-test() { echo; }
+. <(go run . -g -n sh-gen-test $(find . -iname example.txt)) ; sh-gen-test() { echo; }

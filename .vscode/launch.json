@@ -13,7 +13,7 @@
       "cwd": "${workspaceFolder}",
       "args": [
         "-g",
-        "-p",
+        "-n",
         "sh-gen",
         "main.go"
       ]

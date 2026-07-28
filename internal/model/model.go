@@ -65,8 +65,10 @@ type Validation struct {
 // Tree is the root of all completion data parsed from @shgen annotations.
 type Tree struct {
 	// Modules keyed by name; the root module has an empty Parent.
-	Modules     map[string]*Module
-	Validations map[string]*Validation
+	Modules map[string]*Module
+	// FirstModuleName stores the first discovered @shgen module annotation name.
+	FirstModuleName string
+	Validations     map[string]*Validation
 	// Externals are raw scripts injected into the completion file verbatim.
 	Externals []string
 }
