@@ -9,116 +9,72 @@ import (
 // Build constructs a Tree from a slice of parsed annotations.
 // Commands and arguments whose parent is not a known module are attached to a
 // synthetic root module derived from the parent name.
-func Build(annotations []annotation.Annotation) (*Tree, error) {
-	tree := NewTree()
+func Build(annotations []annotation.Annotation) (map[string]*annotation.Annotation, error) {
+	var tree map[string]*annotation.Annotation
+	var root *annotation.Annotation
+	namePaddingChars := 4
 
-	// First pass: create all modules so parent references can be resolved.
+	// Collect modules, and identify root modules
 	for _, ann := range annotations {
+		printedNameChars := len(ann.Name) + len(ann.Alternate) + 2
+		if printedNameChars > namePaddingChars {
+			namePaddingChars = printedNameChars
+		}
 		if ann.Kind == annotation.KindModule {
-			if tree.FirstModuleName == "" && ann.Name != "" {
-				tree.FirstModuleName = ann.Name
+			if len(tree) == 0 {
+				tree[""] = &ann
+				root = &ann
+				continue
 			}
-			m := tree.GetOrCreateModule(ann.Name)
-			m.Description = ann.Description
-			m.Parent = ann.Parent
-			m.Complete = ann.ModuleComplete
+			if parent, ok := tree[ann.Parent]; ok {
+				parent.Modules = append(parent.Modules, &ann)
+				continue
+			}
+			// If module isn't the CLI root or a child of an already declared module, add it under root
+			tree[ann.Name] = &ann
 		}
 	}
+	// TODO nil handling
+	root.MaxNameWidth = namePaddingChars
 
-	// Second pass: process all annotations in order.
+	// process all annotations in order.
 	for _, ann := range annotations {
 		switch ann.Kind {
 		case annotation.KindModule:
-			// Already handled in first pass; wire parent relationship.
-			if ann.Parent != "" {
-				parent := tree.GetOrCreateModule(ann.Parent)
-				child := tree.GetOrCreateModule(ann.Name)
-				// Avoid duplicate sub-module entries.
-				found := false
-				for _, sm := range parent.SubModules {
-					if sm.Name == child.Name {
-						found = true
-						break
-					}
-				}
-				if !found {
-					parent.SubModules = append(parent.SubModules, child)
-				}
+			// Add to parent's modules
+			if parent, ok := tree[ann.Parent]; ok {
+				parent.Modules = append(parent.Modules, &ann)
 			}
 
 		case annotation.KindCommand:
-			var target *Module
-			if ann.Parent != "" {
-				target = tree.GetOrCreateModule(ann.Parent)
+			if parent, ok := tree[ann.Parent]; ok {
+				parent.Commands = append(parent.Commands, &ann)
 			} else {
-				// No parent — attach to a synthetic root module named after
-				// the command's parent. Since no parent is specified, commands
-				// without a parent live in a special unscoped bucket. Use a
-				// sentinel root module with empty name.
-				target = tree.GetOrCreateModule("")
+				// Is root command
+				tree[ann.Name] = &ann
 			}
-			cmd := &Command{
-				Name:        ann.Name,
-				Description: ann.Description,
-				Complete:    ann.CommandComplete,
-			}
-			target.Commands = append(target.Commands, cmd)
 
 		case annotation.KindArgument:
-			arg := &Argument{
-				Name:        ann.Name,
-				Position:    ann.Position,
-				Alternate:   ann.Alternate,
-				Description: ann.Description,
-				Validate:    ann.Validate,
-				Complete:    ann.Complete,
-				Repeatable:  ann.Repeatable,
+			// Add argument under module or command - Will add to root if Parent is undefined
+			if parent, ok := tree[ann.Parent]; ok {
+				parent.Arguments = append(parent.Arguments, &ann)
 			}
-			if ann.Parent != "" {
-				// Parent could be a command or module. Try commands first.
-				found := false
-				for _, m := range tree.Modules {
-					for _, cmd := range m.Commands {
-						if cmd.Name == ann.Parent {
-							cmd.Arguments = append(cmd.Arguments, arg)
-							found = true
-							break
-						}
-					}
-					if found {
-						break
-					}
-				}
-				if !found {
-					// Fall back: attach to a module with that name.
-					mod := tree.GetOrCreateModule(ann.Parent)
-					mod.Arguments = append(mod.Arguments, arg)
-				}
-			} else {
-				// No parent – attach to the root module.
-				root := tree.GetOrCreateModule("")
-				root.Arguments = append(root.Arguments, arg)
-			}
+			// No-op for orphaned arguments
 
 		case annotation.KindValidation:
-			if ann.ValidationName == "" {
+			if ann.Name == "" {
 				return nil, fmt.Errorf("validation annotation missing name")
 			}
-			tree.Validations[ann.ValidationName] = &Validation{
-				Name:    ann.ValidationName,
-				Script:  ann.ValidationScript,
-				NoSpace: ann.ValidationNoSpace,
+			root.Validations = append(root.Validations, &ann)
+			
+		case annotation.KindWildcard:
+			if parent, ok := tree[ann.Parent]; ok {
+				parent.Wildcards = append(parent.Wildcards, &ann)
 			}
 
 		case annotation.KindExternal:
-			tree.Externals = append(tree.Externals, ann.ExternalScript)
+			root.Externals = append(root.Externals, &ann)
 
-		case annotation.KindWildcard:
-			mod := tree.GetOrCreateModule(ann.Parent)
-			mod.Wildcard = &Wildcard{
-				Complete:   ann.WildcardComplete,
-				Masquerade: ann.WildcardMasquerade,
-			}
 		}
 	}
 

@@ -34,8 +34,8 @@ Annotation arguments preceded with a `?` are optional:
 @shgen argument  ?parent=[parent]  ?complete=[mode]  ?alternate=[name]  ?position=[index]  ?repeatable=[true|false]  [name]  [description]
 @shgen wildcard  ?parent=[parent]  complete=[validation] ?masquerade=[command]
 
-@shgen validation  [name]  [script]
-@shgen external            [script]
+@shgen validation  ?option=[option]  [name]  [script]
+@shgen external                              [script]
 ```
 
 ### `module`
@@ -107,12 +107,14 @@ In `validation` scripts, `cur` is already provided by the generated completion f
 
 Supported validations:
 
-| `complete=` value | Behaviour |
-|--------------------|-----------|
-| *(omitted)*        | No value completion; only the flag name is suggested |
-| `file`             | Delegates to bash's default filename completion |
-| `none`             | Suppresses all completions after this flag (e.g. free-form strings, passwords) |
-| `<validation-name>` | Calls the named `validation` function to get dynamic candidates |
+| `complete=` value   | Behaviour                                                                      |
+|---------------------|--------------------------------------------------------------------------------|
+| *(omitted)*         | No value completion; only the flag name is suggested                           |
+| `file`              | Delegates to bash's default filename completion                                |
+| `none`              | Suppresses all completions after this flag (e.g. free-form strings, passwords) |
+| `<validation-name>` | Calls the named `validation` function to get dynamic candidates                |
+
+Validation tags may contain the `option=nospace` parameter to prevent automatic insertion of a space after a suggestion is autocompleted; Useful for the completion of dynamic values, where a single string can be made up of smaller components like a file path or a delimited list made up of available completions
 
 #### Validation context variables
 

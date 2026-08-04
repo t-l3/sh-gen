@@ -31,7 +31,7 @@ const (
 	KindWildcard   Kind = "wildcard"
 )
 
-// Annotation represents a single parsed @shgen annotation.
+// Annotation represents a single parsed @shgen annotation and contains internal fields for modelling the CLI tree
 type Annotation struct {
 	Kind Kind
 
@@ -39,22 +39,15 @@ type Annotation struct {
 	Parent      string // optional ?parent=[parent]
 	Name        string // required name token
 	Description string // remainder of text after name
-
-	// Module-specific
-	ModuleComplete string // optional ?complete=[validation]
-
-	// Command-specific
-	CommandComplete string // optional ?complete=[validation]
+	Complete    string // optional ?complete=[validation]
 
 	// Argument-specific
 	Alternate string // optional ?alternate=[name]
 	Validate  string // optional ?validate=[validation]
-	Complete  string // optional ?complete=[file|none|<validation-name>]
 	Position  int    // optional ?position=[index] (1-based positional argument index)
 	Repeatable bool  // optional ?repeatable=[true|false], default false
 
 	// Validation-specific
-	ValidationName    string // name for validation block
 	ValidationScript  string // script body for validation block
 	ValidationNoSpace bool   // optional ?option=nospace
 
@@ -64,6 +57,17 @@ type Annotation struct {
 	// Wildcard-specific
 	WildcardComplete   string // validation function name for wildcard completions
 	WildcardMasquerade string // command to masquerade as when calling wildcard completion
+
+	// CLI tree modelling
+	Modules      []*Annotation
+	Commands     []*Annotation
+	Arguments    []*Annotation
+	Wildcards    []*Annotation
+	Validations  []*Annotation
+	Externals    []*Annotation
+	MaxNameWidth int
+
+	
 }
 
 // annotationRe matches any end-of-line @shgen ... text (preceded by optional whitespace/comment chars).
@@ -173,9 +177,9 @@ func parseModuleOrCommand(kind Kind, raw string) (Annotation, error) {
 	if kind == KindModule || kind == KindCommand {
 		if m := completeRe.FindStringSubmatchIndex(raw); m != nil {
 			if kind == KindModule {
-				ann.ModuleComplete = raw[m[2]:m[3]]
+				ann.Complete = raw[m[2]:m[3]]
 			} else {
-				ann.CommandComplete = raw[m[2]:m[3]]
+				ann.Complete = raw[m[2]:m[3]]
 			}
 			raw = strings.TrimSpace(raw[:m[0]] + raw[m[1]:])
 		}
@@ -293,7 +297,7 @@ func parseValidation(raw string) (Annotation, error) {
 	if len(fields) == 0 || fields[0] == "" {
 		return Annotation{}, fmt.Errorf("validation annotation requires a name")
 	}
-	ann.ValidationName = fields[0]
+	ann.Name = fields[0]
 	if len(fields) > 1 {
 		ann.ValidationScript = strings.TrimSpace(fields[1])
 	}

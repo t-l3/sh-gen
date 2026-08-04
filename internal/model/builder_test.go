@@ -30,7 +30,7 @@ func TestBuild_ModuleComplete_IsWiredToModel(t *testing.T) {
 			Kind:           annotation.KindModule,
 			Name:           "src",
 			Description:    "src helper",
-			ModuleComplete: "src-ls",
+			Complete: "src-ls",
 		},
 	}
 
@@ -52,7 +52,7 @@ func TestBuild_ValidationNoSpace_IsWiredToModel(t *testing.T) {
 	anns := []annotation.Annotation{
 		{
 			Kind:              annotation.KindValidation,
-			ValidationName:    "src-ls",
+			Name:    "src-ls",
 			ValidationScript:  `echo "alpha"`,
 			ValidationNoSpace: true,
 		},
@@ -121,7 +121,7 @@ func TestBuild_ArgumentRepeatable_IsWiredToModel(t *testing.T) {
 func TestBuild_CommandAndArgumentParentResolution(t *testing.T) {
 	anns := []annotation.Annotation{
 		{Kind: annotation.KindModule, Name: "root"},
-		{Kind: annotation.KindCommand, Parent: "root", Name: "deploy", CommandComplete: "targets"},
+		{Kind: annotation.KindCommand, Parent: "root", Name: "deploy", Complete: "targets"},
 		{Kind: annotation.KindArgument, Parent: "deploy", Name: "--env", Complete: "envs"},
 		{Kind: annotation.KindArgument, Parent: "root", Name: "--verbose"},
 		{Kind: annotation.KindArgument, Name: "--global"},

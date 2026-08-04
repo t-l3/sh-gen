@@ -635,15 +635,15 @@ func TestGenerate_WildcardOutput_UsesColumnPrinterHelper(t *testing.T) {
 	}
 
 	script := out.String()
-	if !strings.Contains(script, "_k_print_columns()") {
+	if !strings.Contains(script, "_shgen_collimate_output()") {
 		t.Fatalf("expected generated script to include column printer helper; got:\n%s", script)
 	}
 
-	if !strings.Contains(script, "_k_print_columns \"${__shgen_wc_values[@]}\"") {
+	if !strings.Contains(script, "_shgen_collimate_output \"${__shgen_wc_values[@]}\"") {
 		t.Fatalf("expected wildcard values to use column printer helper; got:\n%s", script)
 	}
 
-	if !strings.Contains(script, "_k_print_columns \"${__shgen_wc_options[@]}\"") {
+	if !strings.Contains(script, "_shgen_collimate_output \"${__shgen_wc_options[@]}\"") {
 		t.Fatalf("expected wildcard options to use column printer helper; got:\n%s", script)
 	}
 }
@@ -763,15 +763,15 @@ func TestGenerate_LocalSemanticGroups_UseColumnPrinterHelper(t *testing.T) {
 	}
 
 	script := out.String()
-	if !strings.Contains(script, "_k_print_columns \"${__shgen_module_display[@]}\"") {
+	if !strings.Contains(script, "_shgen_collimate_output \"${__shgen_module_display[@]}\"") {
 		t.Fatalf("expected module display to use column printer helper; got:\n%s", script)
 	}
 
-	if !strings.Contains(script, "_k_print_columns \"${__shgen_command_display[@]}\"") {
+	if !strings.Contains(script, "_shgen_collimate_output \"${__shgen_command_display[@]}\"") {
 		t.Fatalf("expected command display to use column printer helper; got:\n%s", script)
 	}
 
-	if !strings.Contains(script, "_k_print_columns \"${__shgen_argument_display[@]}\"") {
+	if !strings.Contains(script, "_shgen_collimate_output \"${__shgen_argument_display[@]}\"") {
 		t.Fatalf("expected argument display to use column printer helper; got:\n%s", script)
 	}
 }

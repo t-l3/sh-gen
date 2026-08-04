@@ -2,12 +2,13 @@ package generator
 
 import (
 	"bytes"
+	"errors"
 	"io"
-	"sort"
 	"strconv"
 	"strings"
 	"text/template"
 
+	"github.com/t-l3/sh-gen/internal/annotation"
 	"github.com/t-l3/sh-gen/internal/model"
 )
 
@@ -27,634 +28,640 @@ const bashTemplate = `
 
 {{ range .Validations }}
 {{ .FuncName }}() {
-    {{ .Script }}
+  {{ .Script }}
 }
 {{ end }}
 
-_{{ .FuncName }}_print_columns() {
-    local -a __shgen_items=("$@")
-    local __shgen_cols="${COLUMNS:-}"
-    if [[ -z "$__shgen_cols" || $__shgen_cols -le 0 ]]; then
-        __shgen_cols=$(tput cols 2>/dev/null)
-    fi
-    if [[ -z "$__shgen_cols" || $__shgen_cols -le 0 ]]; then
-        __shgen_cols=80
-    fi
+# Print all arguments in padded equal width columns
+# When sourced will be shared between sh-gen completion scripts
+_shgen_collimate_output() {
+  local -a __shgen_items=("$@")
 
-    local __shgen_max_len=0
-    local __shgen_item
-    for __shgen_item in "${__shgen_items[@]}"; do
-        local __shgen_len=${#__shgen_item}
-        if (( __shgen_len > __shgen_max_len )); then
-            __shgen_max_len=$__shgen_len
-        fi
+	# TTY Width
+  local __shgen_cols="${COLUMNS:-}"
+  if [[ -z "$__shgen_cols" || $__shgen_cols -le 0 ]]; then
+    __shgen_cols=$(tput cols 2>/dev/null)
+  fi
+  if [[ -z "$__shgen_cols" || $__shgen_cols -le 0 ]]; then
+    __shgen_cols=80
+  fi
+
+  local __shgen_max_len=0
+  local __shgen_item
+  for __shgen_item in "${__shgen_items[@]}"; do
+    local __shgen_len=${#__shgen_item}
+    if (( __shgen_len > __shgen_max_len )); then
+      __shgen_max_len=$__shgen_len
+    fi
+  done
+
+  if (( __shgen_max_len == 0 )); then
+    return 0
+  fi
+
+  local __shgen_col_width=$((__shgen_max_len + 2))
+  local __shgen_col_count=$((__shgen_cols / __shgen_col_width))
+  if (( __shgen_col_count < 1 )); then
+    __shgen_col_count=1
+  fi
+
+  local __shgen_count=${#__shgen_items[@]}
+  local __shgen_row_count=$(((__shgen_count + __shgen_col_count - 1) / __shgen_col_count))
+  local __shgen_r __shgen_c __shgen_idx
+
+  for (( __shgen_r=0; __shgen_r<__shgen_row_count; __shgen_r++ )); do
+    for (( __shgen_c=0; __shgen_c<__shgen_col_count; __shgen_c++ )); do
+      __shgen_idx=$((__shgen_c * __shgen_row_count + __shgen_r))
+      if (( __shgen_idx >= __shgen_count )); then
+        continue
+      fi
+
+      __shgen_item="${__shgen_items[__shgen_idx]}"
+      if (( __shgen_c == __shgen_col_count - 1 || __shgen_idx + __shgen_row_count >= __shgen_count )); then
+        printf "%s" "$__shgen_item"
+      else
+        printf "%-*s" "$__shgen_col_width" "$__shgen_item"
+      fi
     done
-
-    if (( __shgen_max_len == 0 )); then
-        return 0
-    fi
-
-    local __shgen_col_width=$((__shgen_max_len + 2))
-    local __shgen_col_count=$((__shgen_cols / __shgen_col_width))
-    if (( __shgen_col_count < 1 )); then
-        __shgen_col_count=1
-    fi
-
-    local __shgen_count=${#__shgen_items[@]}
-    local __shgen_row_count=$(((__shgen_count + __shgen_col_count - 1) / __shgen_col_count))
-    local __shgen_r __shgen_c __shgen_idx
-
-    for (( __shgen_r=0; __shgen_r<__shgen_row_count; __shgen_r++ )); do
-        for (( __shgen_c=0; __shgen_c<__shgen_col_count; __shgen_c++ )); do
-            __shgen_idx=$((__shgen_c * __shgen_row_count + __shgen_r))
-            if (( __shgen_idx >= __shgen_count )); then
-                continue
-            fi
-
-            __shgen_item="${__shgen_items[__shgen_idx]}"
-            if (( __shgen_c == __shgen_col_count - 1 || __shgen_idx + __shgen_row_count >= __shgen_count )); then
-                printf "%s" "$__shgen_item"
-            else
-                printf "%-*s" "$__shgen_col_width" "$__shgen_item"
-            fi
-        done
-        printf "\n"
-    done
+    printf "\n"
+  done
 }
 
- _{{ .FuncName }}_completion() {
-    local cur prev words cword max_opt_width="{{ .MaxOptWidth }}"
-    local __shgen_printed=0
+# Provides bash completion suggestions for {{ .FuncName }}
+_{{ .FuncName }}_completion() {
+	COMPREPLY=()
+  local cur prev words cword max_opt_width="{{ .MaxOptWidth }}" __shgen_printed=0
 
-    # Preserve original word breaks for delegated completions (e.g. kubectl).
-    local _shgen_orig_COMP_WORDBREAKS="$COMP_WORDBREAKS"
+  # Preserve original word breaks for delegated completions (e.g. kubectl).
+  local _shgen_orig_COMP_WORDBREAKS="$COMP_WORDBREAKS"
 
-    COMPREPLY=()
-    # Parse our own context with ':' and '-' treated as part of words.
-    _get_comp_words_by_ref -n :- cur prev words cword 2>/dev/null || return
+  # Parse our own context with ':' and '-' treated as part of words.
+  _get_comp_words_by_ref -n :- cur prev words cword 2>/dev/null || return
 
-    if [[ "$cur" == *$'\e['* ]]; then
-        return 0
-    fi
+  if [[ "$cur" == *$'\e['* ]]; then
+    return 0
+  fi
 
-    local known_paths=(
-        {{- range .KnownPaths }}
-        "{{ . }}"
-        {{- end }}
-    )
+  # The known modules/commands in this completion function
+  local known_paths=(
+    {{- range .KnownPaths }}
+    "{{ . }}"
+    {{- end }}
+  )
 
-    local context=""
-    local current_path=""
-    local __shgen_unrecognized_path=0
-    for (( i=1; i < cword; i++ )); do
-        case "${words[i]}" in
-            -*) ;;
-            "") ;;
-            *)
-                local next_path="${current_path}${words[i]}"
-                local found=0
-                for p in "${known_paths[@]}"; do
-                    if [[ "$p" == "$next_path" ]]; then
-                        found=1
-                        break
-                    fi
-                done
-                if [[ $found -eq 1 ]]; then
-                    current_path="${next_path} "
-                else
-                    __shgen_unrecognized_path=1
-                    break
+  # Determine the path for the current module/command
+  local context=""
+  local current_path=""
+  local __shgen_unrecognized_path=0
+  for (( i=1; i < cword; i++ )); do
+    case "${words[i]}" in
+      -*) ;;
+      "") ;;
+      *)
+        local next_path="${current_path}${words[i]}"
+        local found=0
+        for path in "${known_paths[@]}"; do
+          if [[ "$path" == "$next_path" ]]; then
+            found=1
+            break
+          fi
+        done
+        if [[ $found -eq 1 ]]; then
+          current_path="${next_path} "
+        else
+          __shgen_unrecognized_path=1
+          break
+        fi
+        ;;
+    esac
+  done
+  context="${current_path}"
+
+  # Normalize context: remove trailing space for matching
+  local normalized_context="${context% }"
+  case "$normalized_context" in
+    {{- range $node := .Nodes }}
+    "{{ trimTrailingSpace $node.Path }}")
+      local -a __shgen_matched=()
+      local __shgen_suppress_local=0
+      {{- if .Wildcard }}
+      if [[ $__shgen_unrecognized_path -eq 1 ]]; then
+        __shgen_suppress_local=1
+      fi
+      {{- end }}
+
+      # Populate context variables for validation scripts.
+      # - _{{ toUpper $.FuncName }}_COM_<NAME> for matched command/module path tokens
+      # - _{{ toUpper $.FuncName }}_ARG_<NAME> for known argument values in this node
+      # - _{{ toUpper $.FuncName }}_COM_ARG1, _{{ toUpper $.FuncName }}_COM_ARG2, ... for positional values after this node path
+      local __shgen_ctx_start=$(({{ pathWordCount $node.Path }} + 1))
+      local __shgen_ctx_expect_value=0
+      local __shgen_ctx_target=""
+      local __shgen_ctx_word=""
+      local __shgen_ctx_value=""
+      local __shgen_ctx_positional_index=0
+
+      for __shgen_ctx_part in $normalized_context; do
+        local __shgen_ctx_key="${__shgen_ctx_part^^}"
+        __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+        local __shgen_ctx_var="_{{ toUpper $.FuncName }}_COM_${__shgen_ctx_key}"
+        local "$__shgen_ctx_var"
+        printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_part"
+      done
+
+      for (( i=__shgen_ctx_start; i < cword; i++ )); do
+        __shgen_ctx_word="${words[i]}"
+
+        if [[ $__shgen_ctx_expect_value -eq 1 ]]; then
+          __shgen_ctx_expect_value=0
+          if [[ -n "$__shgen_ctx_target" ]]; then
+            __shgen_ctx_key="${__shgen_ctx_target#--}"
+            __shgen_ctx_key="${__shgen_ctx_key#-}"
+            __shgen_ctx_key="${__shgen_ctx_key^^}"
+            __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+            if [[ -n "$__shgen_ctx_key" ]]; then
+              __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
+              local "$__shgen_ctx_var"
+              printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
+            fi
+          fi
+          __shgen_ctx_target=""
+          continue
+        fi
+
+        case "$__shgen_ctx_word" in
+          {{- range .Arguments }}
+          {{- $argComplete := argCompletion . }}
+          {{- if and (eq .Position 0) (ne $argComplete "") (or (ne .Name "") (ne .Alternate "")) }}
+          {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
+            __shgen_ctx_expect_value=1
+            __shgen_ctx_target="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
+            ;;
+          {{- end }}
+          {{- end }}
+          --*=*)
+            __shgen_ctx_value="${__shgen_ctx_word#*=}"
+            case "${__shgen_ctx_word%%=*}" in
+              {{- range .Arguments }}
+              {{- $argComplete := argCompletion . }}
+              {{- if and (eq .Position 0) (ne $argComplete "") (or (ne .Name "") (ne .Alternate "")) }}
+              {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
+                __shgen_ctx_key="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
+                __shgen_ctx_key="${__shgen_ctx_key#--}"
+                __shgen_ctx_key="${__shgen_ctx_key#-}"
+                __shgen_ctx_key="${__shgen_ctx_key^^}"
+                __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+                if [[ -n "$__shgen_ctx_key" ]]; then
+                  __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
+                  local "$__shgen_ctx_var"
+                  printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_value"
                 fi
                 ;;
-        esac
-    done
-    context="${current_path}"
-
-    # Normalize context: remove trailing space for matching
-    local normalized_context="${context% }"
-    case "$normalized_context" in
-        {{- range $node := .Nodes }}
-        "{{ trimTrailingSpace $node.Path }}")
-            local -a __shgen_matched=()
-            local __shgen_suppress_local=0
-            {{- if .Wildcard }}
-            if [[ $__shgen_unrecognized_path -eq 1 ]]; then
-                __shgen_suppress_local=1
+              {{- end }}
+              {{- end }}
+            esac
+            ;;
+          -*)
+            ;;
+          "")
+            ;;
+          *)
+            ((__shgen_ctx_positional_index++))
+            local __shgen_ctx_pos_var="_{{ toUpper $.FuncName }}_COM_ARG${__shgen_ctx_positional_index}"
+            local "$__shgen_ctx_pos_var"
+            printf -v "$__shgen_ctx_pos_var" '%s' "$__shgen_ctx_word"
+            {{- range .Arguments }}
+            {{- if and (gt .Position 0) (ne .Name "") }}
+            if [[ $__shgen_ctx_positional_index -eq {{ .Position }} ]]; then
+              __shgen_ctx_key="{{ .Name }}"
+              __shgen_ctx_key="${__shgen_ctx_key#--}"
+              __shgen_ctx_key="${__shgen_ctx_key#-}"
+              __shgen_ctx_key="${__shgen_ctx_key^^}"
+              __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
+              if [[ -n "$__shgen_ctx_key" ]]; then
+                __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
+                local "$__shgen_ctx_var"
+                printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
+              fi
             fi
             {{- end }}
+            {{- end }}
+            ;;
+        esac
+      done
 
-            # Populate context variables for validation scripts.
-            # - _{{ toUpper $.FuncName }}_COM_<NAME> for matched command/module path tokens
-            # - _{{ toUpper $.FuncName }}_ARG_<NAME> for known argument values in this node
-            # - _{{ toUpper $.FuncName }}_COM_ARG1, _{{ toUpper $.FuncName }}_COM_ARG2, ... for positional values after this node path
-            local __shgen_ctx_start=$(({{ pathWordCount $node.Path }} + 1))
-            local __shgen_ctx_expect_value=0
-            local __shgen_ctx_target=""
-            local __shgen_ctx_word=""
-            local __shgen_ctx_value=""
-            local __shgen_ctx_positional_index=0
+      # Explicit completion override for argument values.
+      case "$prev" in
+        {{- range .Arguments }}
+        {{- $argComplete := argCompletion . }}
+        {{- if and (eq .Position 0) (ne .Name "") (ne $argComplete "") }}
+        "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
+          {{- if eq (completionKind $argComplete) "file" }}
+          compopt -o filenames 2>/dev/null
+          COMPREPLY=( $(compgen -f -- "$cur") )
+          {{- else if eq (completionKind $argComplete) "none" }}
+          COMPREPLY=()
+          {{- else if eq (completionKind $argComplete) "function" }}
+          local __shgen_values="$({{ completionFunc $argComplete }} 2>/dev/null)"
+          COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+        {{- if completionNoSpace $argComplete }}
+        compopt -o nospace 2>/dev/null
+        {{- end }}
+          {{- end }}
+          return 0
+          ;;
+        {{- end }}
+        {{- end }}
+      esac
 
-            for __shgen_ctx_part in $normalized_context; do
-                local __shgen_ctx_key="${__shgen_ctx_part^^}"
-                __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
-                local __shgen_ctx_var="_{{ toUpper $.FuncName }}_COM_${__shgen_ctx_key}"
-                local "$__shgen_ctx_var"
-                printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_part"
-            done
+      # Explicit completion override for positional argument values.
+      local __shgen_target_position=$((__shgen_ctx_positional_index + 1))
+      {{- range .Arguments }}
+      {{- $argComplete := argCompletion . }}
+      {{- if and (gt .Position 0) (ne $argComplete "") }}
+      local __shgen_positional_match=0
+      {{- if .Repeatable }}
+      if [[ $__shgen_target_position -ge {{ .Position }} ]]; then
+        __shgen_positional_match=1
+      fi
+      {{- else }}
+      if [[ $__shgen_target_position -eq {{ .Position }} ]]; then
+        __shgen_positional_match=1
+      fi
+      {{- end }}
+      if [[ $__shgen_ctx_expect_value -eq 0 && "$cur" != -* && $__shgen_positional_match -eq 1 ]]; then
+        {{- if eq (completionKind $argComplete) "file" }}
+        compopt -o filenames 2>/dev/null
+        COMPREPLY=( $(compgen -f -- "$cur") )
+        {{- else if eq (completionKind $argComplete) "none" }}
+        COMPREPLY=()
+        {{- else if eq (completionKind $argComplete) "function" }}
+        local __shgen_values="$({{ completionFunc $argComplete }} 2>/dev/null)"
+        COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+        {{- if completionNoSpace $argComplete }}
+        compopt -o nospace 2>/dev/null
+        {{- end }}
+        {{- end }}
+        return 0
+      fi
+      {{- end }}
+      {{- end }}
 
-            for (( i=__shgen_ctx_start; i < cword; i++ )); do
-                __shgen_ctx_word="${words[i]}"
-
-                if [[ $__shgen_ctx_expect_value -eq 1 ]]; then
-                    __shgen_ctx_expect_value=0
-                    if [[ -n "$__shgen_ctx_target" ]]; then
-                        __shgen_ctx_key="${__shgen_ctx_target#--}"
-                        __shgen_ctx_key="${__shgen_ctx_key#-}"
-                        __shgen_ctx_key="${__shgen_ctx_key^^}"
-                        __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
-                        if [[ -n "$__shgen_ctx_key" ]]; then
-                            __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
-                            local "$__shgen_ctx_var"
-                            printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
-                        fi
-                    fi
-                    __shgen_ctx_target=""
-                    continue
-                fi
-
-                case "$__shgen_ctx_word" in
-                    {{- range .Arguments }}
-                    {{- $argComplete := argCompletion . }}
-                    {{- if and (eq .Position 0) (ne $argComplete "") (or (ne .Name "") (ne .Alternate "")) }}
-                    {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
-                        __shgen_ctx_expect_value=1
-                        __shgen_ctx_target="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
-                        ;;
-                    {{- end }}
-                    {{- end }}
-                    --*=*)
-                        __shgen_ctx_value="${__shgen_ctx_word#*=}"
-                        case "${__shgen_ctx_word%%=*}" in
-                            {{- range .Arguments }}
-                            {{- $argComplete := argCompletion . }}
-                            {{- if and (eq .Position 0) (ne $argComplete "") (or (ne .Name "") (ne .Alternate "")) }}
-                            {{ if ne .Name "" }}"{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }}{{ else }}"{{ .Alternate }}"{{ end }})
-                                __shgen_ctx_key="{{ if ne .Name "" }}{{ .Name }}{{ else }}{{ .Alternate }}{{ end }}"
-                                __shgen_ctx_key="${__shgen_ctx_key#--}"
-                                __shgen_ctx_key="${__shgen_ctx_key#-}"
-                                __shgen_ctx_key="${__shgen_ctx_key^^}"
-                                __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
-                                if [[ -n "$__shgen_ctx_key" ]]; then
-                                    __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
-                                    local "$__shgen_ctx_var"
-                                    printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_value"
-                                fi
-                                ;;
-                            {{- end }}
-                            {{- end }}
-                        esac
-                        ;;
-                    -*)
-                        ;;
-                    "")
-                        ;;
-                    *)
-                        ((__shgen_ctx_positional_index++))
-                        local __shgen_ctx_pos_var="_{{ toUpper $.FuncName }}_COM_ARG${__shgen_ctx_positional_index}"
-                        local "$__shgen_ctx_pos_var"
-                        printf -v "$__shgen_ctx_pos_var" '%s' "$__shgen_ctx_word"
-                        {{- range .Arguments }}
-                        {{- if and (gt .Position 0) (ne .Name "") }}
-                        if [[ $__shgen_ctx_positional_index -eq {{ .Position }} ]]; then
-                            __shgen_ctx_key="{{ .Name }}"
-                            __shgen_ctx_key="${__shgen_ctx_key#--}"
-                            __shgen_ctx_key="${__shgen_ctx_key#-}"
-                            __shgen_ctx_key="${__shgen_ctx_key^^}"
-                            __shgen_ctx_key="${__shgen_ctx_key//[^a-zA-Z0-9_]/_}"
-                            if [[ -n "$__shgen_ctx_key" ]]; then
-                                __shgen_ctx_var="_{{ toUpper $.FuncName }}_ARG_${__shgen_ctx_key}"
-                                local "$__shgen_ctx_var"
-                                printf -v "$__shgen_ctx_var" '%s' "$__shgen_ctx_word"
-                            fi
-                        fi
-                        {{- end }}
-                        {{- end }}
-                        ;;
-                esac
-            done
-
-            # Explicit completion override for argument values.
-            case "$prev" in
-                {{- range .Arguments }}
-                {{- $argComplete := argCompletion . }}
-                {{- if and (eq .Position 0) (ne .Name "") (ne $argComplete "") }}
-                "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
-                    {{- if eq (completionKind $argComplete) "file" }}
-                    compopt -o filenames 2>/dev/null
-                    COMPREPLY=( $(compgen -f -- "$cur") )
-                    {{- else if eq (completionKind $argComplete) "none" }}
-                    COMPREPLY=()
-                    {{- else if eq (completionKind $argComplete) "function" }}
-                    local __shgen_values="$({{ completionFunc $argComplete }} 2>/dev/null)"
-                    COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
-                {{- if completionNoSpace $argComplete }}
-                compopt -o nospace 2>/dev/null
-                {{- end }}
-                    {{- end }}
-                    return 0
-                    ;;
-                {{- end }}
-                {{- end }}
-            esac
-
-            # Explicit completion override for positional argument values.
-            local __shgen_target_position=$((__shgen_ctx_positional_index + 1))
+      # Explicit completion override for command value.
+      {{- if ne .CommandComplete "" }}
+      local __shgen_allow_command_complete=0
+      if [[ "$prev" == "{{ .Name }}" ]]; then
+        __shgen_allow_command_complete=1
+      else
+        # Also allow command value completion when no positional value has
+        # been provided yet (e.g. after flags like: cmd -n ns <TAB>).
+        local __shgen_value_seen=0
+        local __shgen_expect_value=0
+        local __shgen_cmd_start=$(({{ pathWordCount $node.Path }} + 1))
+        for (( i=__shgen_cmd_start; i < cword; i++ )); do
+          local __shgen_w="${words[i]}"
+          if [[ $__shgen_expect_value -eq 1 ]]; then
+            __shgen_expect_value=0
+            continue
+          fi
+          case "$__shgen_w" in
             {{- range .Arguments }}
             {{- $argComplete := argCompletion . }}
-            {{- if and (gt .Position 0) (ne $argComplete "") }}
-            local __shgen_positional_match=0
-            {{- if .Repeatable }}
-            if [[ $__shgen_target_position -ge {{ .Position }} ]]; then
-                __shgen_positional_match=1
-            fi
-            {{- else }}
-            if [[ $__shgen_target_position -eq {{ .Position }} ]]; then
-                __shgen_positional_match=1
-            fi
-            {{- end }}
-            if [[ $__shgen_ctx_expect_value -eq 0 && "$cur" != -* && $__shgen_positional_match -eq 1 ]]; then
-                {{- if eq (completionKind $argComplete) "file" }}
-                compopt -o filenames 2>/dev/null
-                COMPREPLY=( $(compgen -f -- "$cur") )
-                {{- else if eq (completionKind $argComplete) "none" }}
-                COMPREPLY=()
-                {{- else if eq (completionKind $argComplete) "function" }}
-                local __shgen_values="$({{ completionFunc $argComplete }} 2>/dev/null)"
-                COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
-                {{- if completionNoSpace $argComplete }}
-                compopt -o nospace 2>/dev/null
-                {{- end }}
-                {{- end }}
-                return 0
-            fi
+            {{- if and (eq .Position 0) (ne .Name "") (ne $argComplete "") }}
+            "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
+              __shgen_expect_value=1
+              ;;
             {{- end }}
             {{- end }}
-
-            # Explicit completion override for command value.
-            {{- if ne .CommandComplete "" }}
-            local __shgen_allow_command_complete=0
-            if [[ "$prev" == "{{ .Name }}" ]]; then
-                __shgen_allow_command_complete=1
-            else
-                # Also allow command value completion when no positional value has
-                # been provided yet (e.g. after flags like: cmd -n ns <TAB>).
-                local __shgen_value_seen=0
-                local __shgen_expect_value=0
-                local __shgen_cmd_start=$(({{ pathWordCount $node.Path }} + 1))
-                for (( i=__shgen_cmd_start; i < cword; i++ )); do
-                    local __shgen_w="${words[i]}"
-                    if [[ $__shgen_expect_value -eq 1 ]]; then
-                        __shgen_expect_value=0
-                        continue
-                    fi
-                    case "$__shgen_w" in
-                        {{- range .Arguments }}
-                        {{- $argComplete := argCompletion . }}
-                        {{- if and (eq .Position 0) (ne .Name "") (ne $argComplete "") }}
-                        "{{ .Name }}"{{ if .Alternate }}|"{{ .Alternate }}"{{ end }})
-                            __shgen_expect_value=1
-                            ;;
-                        {{- end }}
-                        {{- end }}
-                        -*) ;;
-                        *)
-                            __shgen_value_seen=1
-                            break
-                            ;;
-                    esac
-                done
-                if [[ $__shgen_value_seen -eq 0 ]]; then
-                    __shgen_allow_command_complete=1
-                fi
-            fi
-            if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_allow_command_complete -eq 1 && "$cur" != -* ]]; then
-                {{- if eq (completionKind .CommandComplete) "file" }}
-                compopt -o filenames 2>/dev/null
-                COMPREPLY=( $(compgen -f -- "$cur") )
-                {{- else if eq (completionKind .CommandComplete) "none" }}
-                COMPREPLY=()
-                {{- else if eq (completionKind .CommandComplete) "function" }}
-                local __shgen_values="$({{ completionFunc .CommandComplete }} 2>/dev/null)"
-                COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
-                {{- if completionNoSpace .CommandComplete }}
-                compopt -o nospace 2>/dev/null
-                {{- end }}
-                {{- end }}
-                return 0
-            fi
-            {{- end }}
-
-            # Explicit completion override for module first positional value.
-            # Trigger when user is typing the first token after this module path.
-            {{- if ne .ModuleComplete "" }}
-            if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $cword -eq $(({{ pathWordCount $node.Path }} + 1)) && "$cur" != -* ]]; then
-                {{- if eq (completionKind .ModuleComplete) "file" }}
-                compopt -o filenames 2>/dev/null
-                COMPREPLY=( $(compgen -f -- "$cur") )
-                {{- else if eq (completionKind .ModuleComplete) "none" }}
-                COMPREPLY=()
-                {{- else if eq (completionKind .ModuleComplete) "function" }}
-                local __shgen_values="$({{ completionFunc .ModuleComplete }} 2>/dev/null)"
-                COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
-                {{- if completionNoSpace .ModuleComplete }}
-                compopt -o nospace 2>/dev/null
-                {{- end }}
-                {{- end }}
-                return 0
-            fi
-            {{- end }}
-
-            {{- if .Description }}
-            if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
-                if [[ $__shgen_printed -eq 0 ]]; then
-                    printf "\n"
-                    __shgen_printed=1
-                fi
-                echo -e "{{ .Name }} - {{ .Description }}"
-                echo -e "\n  [tab]\tShow contextual help"
-            fi
-            {{- end }}
-            {{- if .SubModules }}
-            local -a __shgen_module_display=()
-            {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable modules:"; fi{{ end }}
-            {{- range .SubModules }}
-            if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
-                __shgen_matched+=("{{ .Name }}")
-                local __shgen_module_line=""
-                printf -v __shgen_module_line "%${max_opt_width}s\t%s" "{{ .Name }}" "({{ .Description }})"
-                __shgen_module_display+=("$__shgen_module_line")
-            fi
-            {{- end }}
-            if [[ ${#__shgen_module_display[@]} -gt 0 ]]; then
-                if [[ $__shgen_printed -eq 0 ]]; then
-                    printf "\n"
-                    __shgen_printed=1
-                fi
-                _{{ $.FuncName }}_print_columns "${__shgen_module_display[@]}"
-            fi
-            {{- end }}
-            {{- if .Commands }}
-            local -a __shgen_command_display=()
-            {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable commands:"; fi{{ end }}
-            {{- range .Commands }}
-            if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
-                __shgen_matched+=("{{ .Name }}")
-                local __shgen_command_line=""
-                printf -v __shgen_command_line "%${max_opt_width}s\t%s" "{{ .Name }}" "({{ .Description }})"
-                __shgen_command_display+=("$__shgen_command_line")
-            fi
-            {{- end }}
-            if [[ ${#__shgen_command_display[@]} -gt 0 ]]; then
-                if [[ $__shgen_printed -eq 0 ]]; then
-                    printf "\n"
-                    __shgen_printed=1
-                fi
-                _{{ $.FuncName }}_print_columns "${__shgen_command_display[@]}"
-            fi
-            {{- end }}
-            {{- if .Arguments }}
-            local -a __shgen_argument_display=()
-            {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable arguments:"; fi{{ end }}
-            {{- range .Arguments }}
-            {{- if and (eq .Position 0) (or (ne .Name "") (ne .Alternate "")) }}
-            local __shgen_arg_matches=0
-            local __shgen_name_matches=0
-            local __shgen_alt_matches=0
-            local __shgen_allow_arg=1
-            {{- if not .Repeatable }}
-            for (( __shgen_seen_i=__shgen_ctx_start; __shgen_seen_i < cword; __shgen_seen_i++ )); do
-                local __shgen_seen_word="${words[__shgen_seen_i]}"
-                {{- if ne .Name "" }}
-                if [[ "$__shgen_seen_word" == "{{ .Name }}" || "$__shgen_seen_word" == "{{ .Name }}"=* ]]; then
-                    __shgen_allow_arg=0
-                    break
-                fi
-                {{- end }}
-                {{- if ne .Alternate "" }}
-                if [[ "$__shgen_seen_word" == "{{ .Alternate }}" || "$__shgen_seen_word" == "{{ .Alternate }}"=* ]]; then
-                    __shgen_allow_arg=0
-                    break
-                fi
-                {{- end }}
-            done
-            {{- end }}
-            if [[ $__shgen_allow_arg -eq 1 && "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
-                __shgen_arg_matches=1
-                __shgen_name_matches=1
-            fi
-            {{- if .Alternate }}
-            if [[ $__shgen_allow_arg -eq 1 && "{{ .Alternate }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
-                __shgen_arg_matches=1
-                __shgen_alt_matches=1
-            fi
-            {{- end }}
-            if [[ $__shgen_arg_matches -eq 1 ]]; then
-                if [[ $__shgen_name_matches -eq 1 ]]; then
-                    __shgen_matched+=("{{ .Name }}")
-                fi
-                {{- if .Alternate }}
-                if [[ $__shgen_alt_matches -eq 1 ]]; then
-                    __shgen_matched+=("{{ .Alternate }}")
-                fi
-                {{- end }}
-                local __shgen_argument_line=""
-                printf -v __shgen_argument_line "%${max_opt_width}s\t%s" "{{ argDisplayLabel . }}" "({{ .Description }})"
-                __shgen_argument_display+=("$__shgen_argument_line")
-            fi
-            {{- end }}
-            {{- end }}
-            if [[ ${#__shgen_argument_display[@]} -gt 0 ]]; then
-                if [[ $__shgen_printed -eq 0 ]]; then
-                    printf "\n"
-                    __shgen_printed=1
-                fi
-                _{{ $.FuncName }}_print_columns "${__shgen_argument_display[@]}"
-            fi
-            {{- end }}
-            {{- if .Wildcard }}
-            # Wildcard completion
-            local __shgen_pre_wildcard_count=${#COMPREPLY[@]}
-
-            # Prefer masqueraded completion first (e.g. kubectl) for deeper paths.
-            if [[ "{{ .Wildcard.Masquerade }}" != "" ]]; then
-                local _shgen_masq_func=$(complete -p {{ .Wildcard.Masquerade }} 2>/dev/null | awk '{print $(NF-1)}')
-                if [[ -n "$_shgen_masq_func" ]]; then
-                    # Calculate how many words to skip from the original command
-                    local _shgen_matched_path_word_count=1
-                    if [[ -n "$normalized_context" ]]; then
-                        local _shgen_matched_path_array=($normalized_context)
-                        _shgen_matched_path_word_count=${#_shgen_matched_path_array[@]}
-                        # Add 1 because the context doesn't include the program name itself at the root
-                        ((_shgen_matched_path_word_count++))
-                    fi
-
-                    # Save current state
-                    local _shgen_orig_words=("${COMP_WORDS[@]}")
-                    local _shgen_orig_cword=$COMP_CWORD
-                    local _shgen_orig_line="$COMP_LINE"
-                    local _shgen_orig_point=$COMP_POINT
-
-                    # Construct new words: Masquerade command + everything after the matched path
-                    COMP_WORDS=("{{ .Wildcard.Masquerade }}" "${_shgen_orig_words[@]:$_shgen_matched_path_word_count}")
-                    # Preserve an explicit empty token for trailing-space completion.
-                    if [[ "$cur" == "" ]]; then
-                        COMP_WORDS+=("")
-                    fi
-                    COMP_CWORD=$(($_shgen_orig_cword - $_shgen_matched_path_word_count + 1))
-                    COMP_LINE="${COMP_WORDS[*]}"
-                    if [[ "$cur" == "" ]]; then
-                        COMP_LINE+=" "
-                    fi
-                    COMP_POINT=${#COMP_LINE}
-
-                    # Ensure delegated completer gets default word-break behaviour.
-                    COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
-
-                    # Call the masqueraded completion function
-                    "$_shgen_masq_func"
-
-                    # Restore state
-                    COMP_WORDS=("${_shgen_orig_words[@]}")
-                    COMP_CWORD=$_shgen_orig_cword
-                    COMP_LINE="$_shgen_orig_line"
-                    COMP_POINT=$_shgen_orig_point
-
-                    if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
-                        local __shgen_wc_has_values=0
-                        for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                            if [[ -n "${COMPREPLY[i]}" ]]; then
-                                __shgen_wc_has_values=1
-                                break
-                            fi
-                        done
-                        if [[ $__shgen_wc_has_values -eq 1 ]]; then
-                            {{ if $.UseSemanticGroups }}
-                            if [[ "$cur" == "" && $__shgen_suppress_local -eq 0 ]]; then
-                                echo -e "\nAdditional completion:"
-                                __shgen_printed=1
-                            fi
-                            {{ end }}
-                            if [[ $__shgen_printed -eq 0 ]]; then
-                                printf "\n"
-                            fi
-                            __shgen_printed=1
-                            local -a __shgen_wc_values=()
-                            local -a __shgen_wc_options=()
-                            local -a __shgen_wc_other=()
-                            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                                local __shgen_wc_item="${COMPREPLY[i]}"
-                                if [[ -z "$__shgen_wc_item" ]]; then
-                                    continue
-                                fi
-                                if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
-                                    __shgen_wc_options+=("$__shgen_wc_item")
-                                elif [[ "$__shgen_wc_item" != -* ]]; then
-                                    __shgen_wc_values+=("$__shgen_wc_item")
-                                else
-                                    __shgen_wc_other+=("$__shgen_wc_item")
-                                fi
-                            done
-                            if [[ ${#__shgen_wc_values[@]} -gt 0 ]]; then
-                                _{{ $.FuncName }}_print_columns "${__shgen_wc_values[@]}"
-                            fi
-                            if [[ ${#__shgen_wc_options[@]} -gt 0 ]]; then
-                                _{{ $.FuncName }}_print_columns "${__shgen_wc_options[@]}"
-                            fi
-                            if [[ ${#__shgen_wc_other[@]} -gt 0 ]]; then
-                                _{{ $.FuncName }}_print_columns "${__shgen_wc_other[@]}"
-                            fi
-                        fi
-                    fi
-                fi
-            fi
-
-            # Fallback to wildcard validator only when masquerade yielded nothing.
-            if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count ]]; then
-                # Restore default word-break behaviour before delegating externally.
-                COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
-                local __shgen_wc_output=""
-                __shgen_wc_output="$({{ .Wildcard.Complete }} 2>/dev/null)"
-
-                # Some wildcard validators print newline-delimited candidates to
-                # stdout instead of mutating COMPREPLY directly. Capture and map
-                # those lines into COMPREPLY so we can render them in columns.
-                if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count && -n "$__shgen_wc_output" ]]; then
-                    while IFS= read -r __shgen_wc_line; do
-                        if [[ -n "$__shgen_wc_line" ]]; then
-                            COMPREPLY+=("$__shgen_wc_line")
-                        fi
-                    done <<< "$__shgen_wc_output"
-                fi
-
-                if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
-                    local __shgen_wc_has_values=0
-                    for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                        if [[ -n "${COMPREPLY[i]}" ]]; then
-                            __shgen_wc_has_values=1
-                            break
-                        fi
-                    done
-                    if [[ $__shgen_wc_has_values -eq 1 ]]; then
-                        {{ if $.UseSemanticGroups }}
-                        if [[ "$cur" == "" ]]; then
-                            echo -e "\nAdditional completion:"
-                            __shgen_printed=1
-                        fi
-                        {{ end }}
-                        if [[ $__shgen_printed -eq 0 ]]; then
-                            printf "\n"
-                        fi
-                        __shgen_printed=1
-                        local -a __shgen_wc_values=()
-                        local -a __shgen_wc_options=()
-                        local -a __shgen_wc_other=()
-                        for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
-                            local __shgen_wc_item="${COMPREPLY[i]}"
-                            if [[ -z "$__shgen_wc_item" ]]; then
-                                continue
-                            fi
-                            if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
-                                __shgen_wc_options+=("$__shgen_wc_item")
-                            elif [[ "$__shgen_wc_item" != -* ]]; then
-                                __shgen_wc_values+=("$__shgen_wc_item")
-                            else
-                                __shgen_wc_other+=("$__shgen_wc_item")
-                            fi
-                        done
-                        if [[ ${#__shgen_wc_values[@]} -gt 0 ]]; then
-                            _{{ $.FuncName }}_print_columns "${__shgen_wc_values[@]}"
-                        fi
-                        if [[ ${#__shgen_wc_options[@]} -gt 0 ]]; then
-                            _{{ $.FuncName }}_print_columns "${__shgen_wc_options[@]}"
-                        fi
-                        if [[ ${#__shgen_wc_other[@]} -gt 0 ]]; then
-                            _{{ $.FuncName }}_print_columns "${__shgen_wc_other[@]}"
-                        fi
-                    fi
-                fi
-            fi
-            {{- end }}
-
-            if [[ $__shgen_printed -eq 1 && -n "$COMP_LINE" && -t 1 ]]; then
-                bind '"\e[0n": redraw-current-line' 2>/dev/null
-                printf "\e[5n"
-            fi
-
-            # Add our own matches back to COMPREPLY (in case wildcard function cleared it)
-            COMPREPLY+=("${__shgen_matched[@]}")
-            ;;
+            -*) ;;
+            *)
+              __shgen_value_seen=1
+              break
+              ;;
+          esac
+        done
+        if [[ $__shgen_value_seen -eq 0 ]]; then
+          __shgen_allow_command_complete=1
+        fi
+      fi
+      if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_allow_command_complete -eq 1 && "$cur" != -* ]]; then
+        {{- if eq (completionKind .CommandComplete) "file" }}
+        compopt -o filenames 2>/dev/null
+        COMPREPLY=( $(compgen -f -- "$cur") )
+        {{- else if eq (completionKind .CommandComplete) "none" }}
+        COMPREPLY=()
+        {{- else if eq (completionKind .CommandComplete) "function" }}
+        local __shgen_values="$({{ completionFunc .CommandComplete }} 2>/dev/null)"
+        COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+        {{- if completionNoSpace .CommandComplete }}
+        compopt -o nospace 2>/dev/null
         {{- end }}
-    esac
+        {{- end }}
+        return 0
+      fi
+      {{- end }}
+
+      # Explicit completion override for module first positional value.
+      # Trigger when user is typing the first token after this module path.
+      {{- if ne .ModuleComplete "" }}
+      if [[ "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $cword -eq $(({{ pathWordCount $node.Path }} + 1)) && "$cur" != -* ]]; then
+        {{- if eq (completionKind .ModuleComplete) "file" }}
+        compopt -o filenames 2>/dev/null
+        COMPREPLY=( $(compgen -f -- "$cur") )
+        {{- else if eq (completionKind .ModuleComplete) "none" }}
+        COMPREPLY=()
+        {{- else if eq (completionKind .ModuleComplete) "function" }}
+        local __shgen_values="$({{ completionFunc .ModuleComplete }} 2>/dev/null)"
+        COMPREPLY=( $(compgen -W "$__shgen_values" -- "$cur") )
+        {{- if completionNoSpace .ModuleComplete }}
+        compopt -o nospace 2>/dev/null
+        {{- end }}
+        {{- end }}
+        return 0
+      fi
+      {{- end }}
+
+      {{- if .Description }}
+      if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+        if [[ $__shgen_printed -eq 0 ]]; then
+          printf "\n"
+          __shgen_printed=1
+        fi
+        echo -e "{{ .Name }} - {{ .Description }}"
+        echo -e "\n  [tab]\tShow contextual help"
+      fi
+      {{- end }}
+      {{- if .SubModules }}
+      local -a __shgen_module_display=()
+      {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable modules:"; fi{{ end }}
+      {{- range .SubModules }}
+      if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+        __shgen_matched+=("{{ .Name }}")
+        local __shgen_module_line=""
+        printf -v __shgen_module_line "%${max_opt_width}s\t%s" "{{ .Name }}" "({{ .Description }})"
+        __shgen_module_display+=("$__shgen_module_line")
+      fi
+      {{- end }}
+      if [[ ${#__shgen_module_display[@]} -gt 0 ]]; then
+        if [[ $__shgen_printed -eq 0 ]]; then
+          printf "\n"
+          __shgen_printed=1
+        fi
+        _shgen_collimate_output "${__shgen_module_display[@]}"
+      fi
+      {{- end }}
+      {{- if .Commands }}
+      local -a __shgen_command_display=()
+      {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable commands:"; fi{{ end }}
+      {{- range .Commands }}
+      if [[ "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+        __shgen_matched+=("{{ .Name }}")
+        local __shgen_command_line=""
+        printf -v __shgen_command_line "%${max_opt_width}s\t%s" "{{ .Name }}" "({{ .Description }})"
+        __shgen_command_display+=("$__shgen_command_line")
+      fi
+      {{- end }}
+      if [[ ${#__shgen_command_display[@]} -gt 0 ]]; then
+        if [[ $__shgen_printed -eq 0 ]]; then
+          printf "\n"
+          __shgen_printed=1
+        fi
+        _shgen_collimate_output "${__shgen_command_display[@]}"
+      fi
+      {{- end }}
+      {{- if .Arguments }}
+      local -a __shgen_argument_display=()
+      {{ if $.UseSemanticGroups }}if [[ "$cur" == "" && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then echo -e "\nAvailable arguments:"; fi{{ end }}
+      {{- range .Arguments }}
+      {{- if and (eq .Position 0) (or (ne .Name "") (ne .Alternate "")) }}
+      local __shgen_arg_matches=0
+      local __shgen_name_matches=0
+      local __shgen_alt_matches=0
+      local __shgen_allow_arg=1
+      {{- if not .Repeatable }}
+      for (( __shgen_seen_i=__shgen_ctx_start; __shgen_seen_i < cword; __shgen_seen_i++ )); do
+        local __shgen_seen_word="${words[__shgen_seen_i]}"
+        {{- if ne .Name "" }}
+        if [[ "$__shgen_seen_word" == "{{ .Name }}" || "$__shgen_seen_word" == "{{ .Name }}"=* ]]; then
+          __shgen_allow_arg=0
+          break
+        fi
+        {{- end }}
+        {{- if ne .Alternate "" }}
+        if [[ "$__shgen_seen_word" == "{{ .Alternate }}" || "$__shgen_seen_word" == "{{ .Alternate }}"=* ]]; then
+          __shgen_allow_arg=0
+          break
+        fi
+        {{- end }}
+      done
+      {{- end }}
+      if [[ $__shgen_allow_arg -eq 1 && "{{ .Name }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+        __shgen_arg_matches=1
+        __shgen_name_matches=1
+      fi
+      {{- if .Alternate }}
+      if [[ $__shgen_allow_arg -eq 1 && "{{ .Alternate }}" == "$cur"* && "$normalized_context" == "{{ trimTrailingSpace $node.Path }}" && $__shgen_suppress_local -eq 0 ]]; then
+        __shgen_arg_matches=1
+        __shgen_alt_matches=1
+      fi
+      {{- end }}
+      if [[ $__shgen_arg_matches -eq 1 ]]; then
+        if [[ $__shgen_name_matches -eq 1 ]]; then
+          __shgen_matched+=("{{ .Name }}")
+        fi
+        {{- if .Alternate }}
+        if [[ $__shgen_alt_matches -eq 1 ]]; then
+          __shgen_matched+=("{{ .Alternate }}")
+        fi
+        {{- end }}
+        local __shgen_argument_line=""
+        printf -v __shgen_argument_line "%${max_opt_width}s\t%s" "{{ argDisplayLabel . }}" "({{ .Description }})"
+        __shgen_argument_display+=("$__shgen_argument_line")
+      fi
+      {{- end }}
+      {{- end }}
+      if [[ ${#__shgen_argument_display[@]} -gt 0 ]]; then
+        if [[ $__shgen_printed -eq 0 ]]; then
+          printf "\n"
+          __shgen_printed=1
+        fi
+        _shgen_collimate_output "${__shgen_argument_display[@]}"
+      fi
+      {{- end }}
+      {{- if .Wildcard }}
+      # Wildcard completion
+      local __shgen_pre_wildcard_count=${#COMPREPLY[@]}
+
+      # Prefer masqueraded completion first (e.g. kubectl) for deeper paths.
+      if [[ "{{ .Wildcard.Masquerade }}" != "" ]]; then
+        local _shgen_masq_func=$(complete -p {{ .Wildcard.Masquerade }} 2>/dev/null | awk '{print $(NF-1)}')
+        if [[ -n "$_shgen_masq_func" ]]; then
+          # Calculate how many words to skip from the original command
+          local _shgen_matched_path_word_count=1
+          if [[ -n "$normalized_context" ]]; then
+            local _shgen_matched_path_array=($normalized_context)
+            _shgen_matched_path_word_count=${#_shgen_matched_path_array[@]}
+            # Add 1 because the context doesn't include the program name itself at the root
+            ((_shgen_matched_path_word_count++))
+          fi
+
+          # Save current state
+          local _shgen_orig_words=("${COMP_WORDS[@]}")
+          local _shgen_orig_cword=$COMP_CWORD
+          local _shgen_orig_line="$COMP_LINE"
+          local _shgen_orig_point=$COMP_POINT
+
+          # Construct new words: Masquerade command + everything after the matched path
+          COMP_WORDS=("{{ .Wildcard.Masquerade }}" "${_shgen_orig_words[@]:$_shgen_matched_path_word_count}")
+          # Preserve an explicit empty token for trailing-space completion.
+          if [[ "$cur" == "" ]]; then
+            COMP_WORDS+=("")
+          fi
+          COMP_CWORD=$(($_shgen_orig_cword - $_shgen_matched_path_word_count + 1))
+          COMP_LINE="${COMP_WORDS[*]}"
+          if [[ "$cur" == "" ]]; then
+            COMP_LINE+=" "
+          fi
+          COMP_POINT=${#COMP_LINE}
+
+          # Ensure delegated completer gets default word-break behaviour.
+          COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
+
+          # Call the masqueraded completion function
+          "$_shgen_masq_func"
+
+          # Restore state
+          COMP_WORDS=("${_shgen_orig_words[@]}")
+          COMP_CWORD=$_shgen_orig_cword
+          COMP_LINE="$_shgen_orig_line"
+          COMP_POINT=$_shgen_orig_point
+
+          if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
+            local __shgen_wc_has_values=0
+            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+              if [[ -n "${COMPREPLY[i]}" ]]; then
+                __shgen_wc_has_values=1
+                break
+              fi
+            done
+            if [[ $__shgen_wc_has_values -eq 1 ]]; then
+              {{ if $.UseSemanticGroups }}
+              if [[ "$cur" == "" && $__shgen_suppress_local -eq 0 ]]; then
+                echo -e "\nAdditional completion:"
+                __shgen_printed=1
+              fi
+              {{ end }}
+              if [[ $__shgen_printed -eq 0 ]]; then
+                printf "\n"
+              fi
+              __shgen_printed=1
+              local -a __shgen_wc_values=()
+              local -a __shgen_wc_options=()
+              local -a __shgen_wc_other=()
+              for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+                local __shgen_wc_item="${COMPREPLY[i]}"
+                if [[ -z "$__shgen_wc_item" ]]; then
+                  continue
+                fi
+                if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
+                  __shgen_wc_options+=("$__shgen_wc_item")
+                elif [[ "$__shgen_wc_item" != -* ]]; then
+                  __shgen_wc_values+=("$__shgen_wc_item")
+                else
+                  __shgen_wc_other+=("$__shgen_wc_item")
+                fi
+              done
+              if [[ ${#__shgen_wc_values[@]} -gt 0 ]]; then
+                _shgen_collimate_output "${__shgen_wc_values[@]}"
+              fi
+              if [[ ${#__shgen_wc_options[@]} -gt 0 ]]; then
+                _shgen_collimate_output "${__shgen_wc_options[@]}"
+              fi
+              if [[ ${#__shgen_wc_other[@]} -gt 0 ]]; then
+                _shgen_collimate_output "${__shgen_wc_other[@]}"
+              fi
+            fi
+          fi
+        fi
+      fi
+
+      # Fallback to wildcard validator only when masquerade yielded nothing.
+      if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count ]]; then
+        # Restore default word-break behaviour before delegating externally.
+        COMP_WORDBREAKS="$_shgen_orig_COMP_WORDBREAKS"
+        local __shgen_wc_output=""
+        __shgen_wc_output="$({{ .Wildcard.Complete }} 2>/dev/null)"
+
+        # Some wildcard validators print newline-delimited candidates to
+        # stdout instead of mutating COMPREPLY directly. Capture and map
+        # those lines into COMPREPLY so we can render them in columns.
+        if [[ ${#COMPREPLY[@]} -eq $__shgen_pre_wildcard_count && -n "$__shgen_wc_output" ]]; then
+          while IFS= read -r __shgen_wc_line; do
+            if [[ -n "$__shgen_wc_line" ]]; then
+              COMPREPLY+=("$__shgen_wc_line")
+            fi
+          done <<< "$__shgen_wc_output"
+        fi
+
+        if [[ ${#COMPREPLY[@]} -gt $__shgen_pre_wildcard_count ]]; then
+          local __shgen_wc_has_values=0
+          for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+            if [[ -n "${COMPREPLY[i]}" ]]; then
+              __shgen_wc_has_values=1
+              break
+            fi
+          done
+          if [[ $__shgen_wc_has_values -eq 1 ]]; then
+            {{ if $.UseSemanticGroups }}
+            if [[ "$cur" == "" ]]; then
+              echo -e "\nAdditional completion:"
+              __shgen_printed=1
+            fi
+            {{ end }}
+            if [[ $__shgen_printed -eq 0 ]]; then
+              printf "\n"
+            fi
+            __shgen_printed=1
+            local -a __shgen_wc_values=()
+            local -a __shgen_wc_options=()
+            local -a __shgen_wc_other=()
+            for (( i=$__shgen_pre_wildcard_count; i < ${#COMPREPLY[@]}; i++ )); do
+              local __shgen_wc_item="${COMPREPLY[i]}"
+              if [[ -z "$__shgen_wc_item" ]]; then
+                continue
+              fi
+              if [[ "$__shgen_wc_item" == -* || "$__shgen_wc_item" == \\-* ]]; then
+                __shgen_wc_options+=("$__shgen_wc_item")
+              elif [[ "$__shgen_wc_item" != -* ]]; then
+                __shgen_wc_values+=("$__shgen_wc_item")
+              else
+                __shgen_wc_other+=("$__shgen_wc_item")
+              fi
+            done
+            if [[ ${#__shgen_wc_values[@]} -gt 0 ]]; then
+              _shgen_collimate_output "${__shgen_wc_values[@]}"
+            fi
+            if [[ ${#__shgen_wc_options[@]} -gt 0 ]]; then
+              _shgen_collimate_output "${__shgen_wc_options[@]}"
+            fi
+            if [[ ${#__shgen_wc_other[@]} -gt 0 ]]; then
+              _shgen_collimate_output "${__shgen_wc_other[@]}"
+            fi
+          fi
+        fi
+      fi
+      {{- end }}
+
+      if [[ $__shgen_printed -eq 1 && -n "$COMP_LINE" && -t 1 ]]; then
+        bind '"\e[0n": redraw-current-line' 2>/dev/null
+        printf "\e[5n"
+      fi
+
+      # Add our own matches back to COMPREPLY (in case wildcard function cleared it)
+      COMPREPLY+=("${__shgen_matched[@]}")
+      ;;
+    {{- end }}
+  esac
 }
 
 complete -F _{{ .FuncName }}_completion {{ .ProgramName }}
@@ -688,111 +695,46 @@ type templateData struct {
 	FuncName          string
 	UseSemanticGroups bool
 	MaxOptWidth       int
-	Nodes             []node
+	Tree    map[string]*annotation.Annotation
 	KnownPaths        []string
 	Externals         []string
 	Validations       []tmplValidation
 }
 
 // Generate writes a bash completion script for tree to w.
-func Generate(w io.Writer, tree *model.Tree, opts Options) error {
+func Generate(w io.Writer, tree map[string]*annotation.Annotation, opts Options) error {
 	programName := opts.ProgramName
 	if programName == "" {
-		programName = strings.TrimSpace(tree.FirstModuleName)
+    programName = strings.TrimSpace(tree[""].Name)
 	}
-	if programName == "" {
-		var rootNames []string
-		for _, m := range tree.Modules {
-			if m.Parent == "" && m.Name != "" {
-				rootNames = append(rootNames, m.Name)
-			}
-		}
-		if len(rootNames) > 0 {
-			sort.Strings(rootNames)
-			programName = rootNames[0]
-		}
-	}
-	if programName == "" {
-		programName = "program"
-	}
+  if programName == "" {
+	  return errors.New("no app name was provided and no module annotations were defined")
+  }
 
 	data := templateData{
 		ProgramName:       programName,
 		FuncName:          sanitizeFuncName(programName),
 		UseSemanticGroups: opts.UseSemanticGroups,
-		Externals:         tree.Externals,
+    Tree:              tree,
 	}
 
-	validationNames := make([]string, 0, len(tree.Validations))
-	for name := range tree.Validations {
-		validationNames = append(validationNames, name)
-	}
-	sort.Strings(validationNames)
-	for _, name := range validationNames {
-		v := tree.Validations[name]
-		if v == nil {
-			continue
-		}
-		data.Validations = append(data.Validations, tmplValidation{
-			FuncName: "_shgen_validate_" + sanitizeFuncName(v.Name),
-			Script:   v.Script,
-			NoSpace:  v.NoSpace,
-		})
-	}
+  // TODO Reference AnnotationTree.Validations directly instead
+	// for _, validation := range rootModule.Validations {
+	// 	data.Validations = append(data.Validations, tmplValidation{
+	// 		FuncName: "_shgen_validate_" + sanitizeFuncName(validation.Name),
+	// 		Script:   validation.ValidationScript,
+	// 		NoSpace:  validation.ValidationNoSpace,
+	// 	})
+	// }
 
-	validationNoSpace := make(map[string]bool, len(tree.Validations))
-	for name, v := range tree.Validations {
-		if v != nil {
-			validationNoSpace[name] = v.NoSpace
-		}
-	}
 
-	// Collect nodes from root modules. We combine Modules[""] and Modules[programName]
-	// if they both represent the root.
-	rootNodesMap := make(map[string]node)
-	roots := []*model.Module{tree.Modules[""], tree.Modules[programName]}
-	for _, root := range roots {
-		if root == nil {
-			continue
-		}
-		// Process this root and its children
-		for _, n := range collectNodes("", root) {
-			if existing, ok := rootNodesMap[n.Path]; ok {
-				// Merge content for same path
-				existing.SubModules = append(existing.SubModules, n.SubModules...)
-				existing.Commands = append(existing.Commands, n.Commands...)
-				existing.Arguments = append(existing.Arguments, n.Arguments...)
-				if n.ModuleComplete != "" {
-					existing.ModuleComplete = n.ModuleComplete
-				}
-				if n.Wildcard != nil {
-					existing.Wildcard = n.Wildcard
-				}
-				if n.Description != "" {
-					existing.Description = n.Description
-				}
-				if n.Name != "" {
-					existing.Name = n.Name
-				}
-				rootNodesMap[n.Path] = existing
-			} else {
-				rootNodesMap[n.Path] = n
-			}
-		}
-	}
-
-	// Flatten map back to slice
-	nodePaths := make([]string, 0, len(rootNodesMap))
-	for path := range rootNodesMap {
-		nodePaths = append(nodePaths, path)
-	}
-	sort.Strings(nodePaths)
-	for _, path := range nodePaths {
-		n := rootNodesMap[path]
-		data.Nodes = append(data.Nodes, n)
-		data.KnownPaths = append(data.KnownPaths, strings.TrimSpace(n.Path))
-	}
-	sort.Strings(data.KnownPaths)
+  // TODO revisit this
+	// validationNoSpace := make(map[string]bool, len(tree.Validations))
+	// for name, v := range tree.Validations {
+	// 	if v != nil {
+	// 		validationNoSpace[name] = v.NoSpace
+	// 	}
+	// }
 
 	resolveCompletion := func(raw string) (kind string, fn string) {
 		raw = strings.TrimSpace(raw)
@@ -805,8 +747,12 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 		case "none":
 			return "none", ""
 		default:
-			if _, ok := tree.Validations[raw]; ok {
-				return "function", "_shgen_validate_" + sanitizeFuncName(raw)
+			if rootModule, ok := tree[""]; ok {
+        for _, validation := range rootModule.Validations {
+          if validation.Name == raw {
+            return "function", "_shgen_validate_" + sanitizeFuncName(raw)
+          }
+        }
 			}
 			// Treat as externally declared completion function.
 			return "function", raw
@@ -834,13 +780,13 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 			_, fn := resolveCompletion(raw)
 			return fn
 		},
-		"completionNoSpace": func(raw string) bool {
-			raw = strings.TrimSpace(raw)
-			if raw == "" || raw == "file" || raw == "none" {
-				return false
-			}
-			return validationNoSpace[raw]
-		},
+		// "completionNoSpace": func(raw string) bool {
+		// 	raw = strings.TrimSpace(raw)
+		// 	if raw == "" || raw == "file" || raw == "none" {
+		// 		return false
+		// 	}
+		// 	return validationNoSpace[raw]
+		// },
 		"pathWordCount": func(path string) int {
 			trimmed := strings.TrimSpace(path)
 			if trimmed == "" {
@@ -854,7 +800,7 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 		"toUpper": strings.ToUpper,
 	}
 
-	data.MaxOptWidth = calculateMaxOptWidth(data.Nodes)
+	data.MaxOptWidth = tree[""].MaxNameWidth
 
 	tmpl, err := template.New("bash").Funcs(funcMap).Parse(strings.TrimSpace(bashTemplate))
 	if err != nil {
@@ -862,68 +808,6 @@ func Generate(w io.Writer, tree *model.Tree, opts Options) error {
 	}
 
 	return tmpl.Execute(w, data)
-}
-
-func collectNodes(parentPath string, m *model.Module) []node {
-	n := node{
-		Name:           m.Name,
-		Path:           parentPath,
-		Description:    m.Description,
-		ModuleComplete: m.Complete,
-		SubModules:     m.SubModules,
-		Commands:       m.Commands,
-		Arguments:      m.Arguments,
-	}
-	if m.Wildcard != nil {
-		n.Wildcard = &tmplWildcard{
-			Complete:   "_shgen_validate_" + sanitizeFuncName(m.Wildcard.Complete),
-			Masquerade: m.Wildcard.Masquerade,
-		}
-	}
-	nodes := []node{n}
-
-	for _, sub := range m.SubModules {
-		nodes = append(nodes, collectNodes(parentPath+sub.Name+" ", sub)...)
-	}
-
-	for _, cmd := range m.Commands {
-		nodes = append(nodes, node{
-			Name:            cmd.Name,
-			Path:            parentPath + cmd.Name + " ",
-			Description:     cmd.Description,
-			CommandComplete: cmd.Complete,
-			Arguments:       cmd.Arguments,
-		})
-	}
-
-	return nodes
-}
-
-func calculateMaxOptWidth(nodes []node) int {
-	maxWidth := 1
-	for _, n := range nodes {
-		for _, sm := range n.SubModules {
-			if l := len(sm.Name); l > maxWidth {
-				maxWidth = l
-			}
-		}
-		for _, cmd := range n.Commands {
-			if l := len(cmd.Name); l > maxWidth {
-				maxWidth = l
-			}
-		}
-		for _, arg := range n.Arguments {
-			label := argDisplayLabel(arg)
-			if l := len(label); l > maxWidth {
-				maxWidth = l
-			}
-		}
-	}
-
-	// Add small indent
-	maxWidth += 2
-
-	return maxWidth
 }
 
 func argDisplayLabel(arg *model.Argument) string {

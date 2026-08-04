@@ -23,8 +23,8 @@ func TestScan_ModuleComplete_ParsesValidationOption(t *testing.T) {
 	if ann.Name != "src" {
 		t.Fatalf("expected module name src, got %q", ann.Name)
 	}
-	if ann.ModuleComplete != "src-ls" {
-		t.Fatalf("expected module complete src-ls, got %q", ann.ModuleComplete)
+	if ann.Complete != "src-ls" {
+		t.Fatalf("expected module complete src-ls, got %q", ann.Complete)
 	}
 	if ann.Description != "A helper function to cd to src repos" {
 		t.Fatalf("unexpected description: %q", ann.Description)
@@ -46,8 +46,8 @@ func TestScan_ValidationOptionNoSpace_IsParsed(t *testing.T) {
 	if ann.Kind != KindValidation {
 		t.Fatalf("expected KindValidation, got %q", ann.Kind)
 	}
-	if ann.ValidationName != "src-ls" {
-		t.Fatalf("expected validation name src-ls, got %q", ann.ValidationName)
+	if ann.Name != "src-ls" {
+		t.Fatalf("expected validation name src-ls, got %q", ann.Name)
 	}
 	if !ann.ValidationNoSpace {
 		t.Fatalf("expected ValidationNoSpace=true when option=nospace is present")
@@ -130,8 +130,8 @@ func TestScan_CommandComplete_IsParsed(t *testing.T) {
 	if ann.Name != "deploy" {
 		t.Fatalf("expected command name deploy, got %q", ann.Name)
 	}
-	if ann.CommandComplete != "targets" {
-		t.Fatalf("expected command complete targets, got %q", ann.CommandComplete)
+	if ann.Complete != "targets" {
+		t.Fatalf("expected command complete targets, got %q", ann.Complete)
 	}
 }
 

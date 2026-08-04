@@ -2,6 +2,8 @@
 // built from @shgen annotations.
 package model
 
+import "github.com/t-l3/sh-gen/internal/annotation"
+
 // Argument represents a CLI flag or positional argument.
 type Argument struct {
 	// Name is the argument name, e.g. "--config" for flags or "secret" for positional args.
@@ -42,8 +44,8 @@ type Module struct {
 	// Complete is an optional validation name used to complete the module's
 	// first positional value (e.g. `src <repo>`).
 	Complete   string
-	Commands   []*Command
-	Arguments  []*Argument
+	Commands   []*annotation.Annotation
+	Arguments  []*annotation.Annotation
 	SubModules []*Module
 	// Wildcard provides dynamic completions for unknown subcommands (e.g., kubectl passthrough).
 	Wildcard *Wildcard
